@@ -4,6 +4,7 @@ const session = require('express-session');
 const dotenv = require('dotenv');
 const path = require('path');
 const os = require('os');
+const fs = require('fs');
 
 dotenv.config();
 const app = express();
@@ -45,6 +46,15 @@ app.get('/api/system', requireAuth, (req, res) => {
     const totalMem = os.totalmem();
     const freeMem = os.freemem();
     const usedMem = totalMem - freeMem;
+
+    // Đọc nhiệt độ CPU (Mặc định Linux trả về millidegree Celsius)
+    let cpuTemp = "N/A";
+    try {
+        const tempString = fs.readFileSync('/sys/class/thermal/thermal_zone0/temp', 'utf8');
+        cpuTemp = (parseInt(tempString, 10) / 1000).toFixed(1);
+    } catch (e) {
+        // Bỏ qua nếu bo mạch không hỗ trợ đọc nhiệt độ theo chuẩn chung
+    }
     
     exec("top -bn1 | grep 'Cpu(s)' | sed 's/.*, *\\([0-9.]*\\)%* id.*/\\1/' | awk '{print 100 - $1}'", (errCpu, stdoutCpu) => {
         const cpuUsage = errCpu ? 0 : parseFloat(stdoutCpu.trim());
@@ -82,6 +92,7 @@ app.get('/api/system', requireAuth, (req, res) => {
                     
                     return res.json({
                         cpu: cpuUsage.toFixed(1),
+                        temp: cpuTemp
                         memory: {
                             used: (usedMem / 1024 / 1024 / 1024).toFixed(2),
                             total: (totalMem / 1024 / 1024 / 1024).toFixed(2),
@@ -105,6 +116,7 @@ app.get('/api/system', requireAuth, (req, res) => {
                         
                         return res.json({
                             cpu: cpuUsage.toFixed(1),
+                            temp: cpuTemp
                             memory: { used: (usedMem / 1024 / 1024 / 1024).toFixed(2), total: (totalMem / 1024 / 1024 / 1024).toFixed(2), percent: ((usedMem / totalMem) * 100).toFixed(1) },
                             disk: diskInfo,
                             usb: usbList
@@ -130,6 +142,7 @@ app.get('/api/system', requireAuth, (req, res) => {
                         
                         res.json({
                             cpu: cpuUsage.toFixed(1),
+                            temp: cpuTemp
                             memory: { used: (usedMem / 1024 / 1024 / 1024).toFixed(2), total: (totalMem / 1024 / 1024 / 1024).toFixed(2), percent: ((usedMem / totalMem) * 100).toFixed(1) },
                             disk: diskInfo,
                             usb: usbList
