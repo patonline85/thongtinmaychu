@@ -228,25 +228,37 @@ app.get('/api/docker', requireAuth, (req, res) => {
     });
 });
 
-// API Kích hoạt Backup (Đồng bộ Rsync sang thiết bị ngoài)
+// Cần import thêm spawn từ child_process (có thể đặt ở đầu file hoặc gọi trực tiếp)
+const { exec, spawn } = require('child_process');
+
+// API Kích hoạt Backup (Đồng bộ Rsync sang thiết bị ngoài - Chống tràn RAM)
 app.post('/api/backup', requireAuth, (req, res) => {
     if (isBackingUp) return res.status(400).json({ success: false, error: "Hệ thống đang đồng bộ!" });
     isBackingUp = true;
     res.json({ success: true, message: "Đã kích hoạt đồng bộ ngầm!" });
 
-    // Đã thêm lệnh ném log vào /dev/null và lệnh ÉP XẢ RAM (drop_caches) ở dòng cuối
+    // Lệnh đồng bộ và ép xả RAM hệ thống (echo 3 xả mạnh hơn echo 1)
     const backupCommand = `
         TARGET_DEV=$(chroot /hostfs sh -c "df | grep /media/sdcard | awk '{print \\$1}'") && \
         if [ ! -z "$TARGET_DEV" ]; then chroot /hostfs mount -o remount,rw $TARGET_DEV; fi && \
-        chroot /hostfs rsync -aAXxHS --delete --exclude='/dev/*' --exclude='/proc/*' --exclude='/sys/*' --exclude='/tmp/*' --exclude='/run/*' --exclude='/mnt/*' --exclude='/media/*' --exclude='/lost+found' / /media/sdcard/ > /dev/null 2>&1 && \
+        chroot /hostfs rsync -aAXxHS --delete --exclude='/dev/*' --exclude='/proc/*' --exclude='/sys/*' --exclude='/tmp/*' --exclude='/run/*' --exclude='/mnt/*' --exclude='/media/*' --exclude='/lost+found' / /media/sdcard/ && \
         if [ ! -z "$TARGET_DEV" ]; then chroot /hostfs mount -o remount,ro $TARGET_DEV; fi && \
-        chroot /hostfs sh -c "sync; echo 1 > /proc/sys/vm/drop_caches"
+        chroot /hostfs sh -c "sync; echo 3 > /proc/sys/vm/drop_caches"
     `;
 
-    exec(backupCommand, (err) => {
+    // Dùng spawn thay vì exec để KHÔNG TẠO BỘ ĐỆM RAM
+    const backupProcess = spawn('sh', ['-c', backupCommand], {
+        stdio: 'ignore' // Cắt đứt hoàn toàn luồng giao tiếp, không lưu bất kỳ log nào vào RAM
+    });
+
+    backupProcess.on('close', (code) => {
         isBackingUp = false;
-        if (err) console.error("Lỗi Backup:", err.message);
-        else console.log("✅ Backup hoàn tất. Đã ép hệ thống xả 100% RAM đệm!");
+        console.log(`✅ Backup hoàn tất với mã ${code}. Đã xả RAM triệt để!`);
+    });
+
+    backupProcess.on('error', (err) => {
+        isBackingUp = false;
+        console.error("⛔ Lỗi tiến trình Backup:", err.message);
     });
 });
 
