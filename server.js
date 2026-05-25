@@ -222,7 +222,7 @@ app.post('/api/backup', requireAuth, (req, res) => {
 
     const backupCommand = `
         chroot /hostfs mount -o remount,rw /media/sdcard && \
-        chroot /hostfs rsync -aAXx --delete --exclude='/dev/*' --exclude='/proc/*' --exclude='/sys/*' --exclude='/tmp/*' --exclude='/run/*' --exclude='/mnt/*' --exclude='/media/*' --exclude='/lost+found' / /media/sdcard/ && \
+        chroot /hostfs rsync -aAXxHS --delete --exclude='/dev/*' --exclude='/proc/*' --exclude='/sys/*' --exclude='/tmp/*' --exclude='/run/*' --exclude='/mnt/*' --exclude='/media/*' --exclude='/lost+found' / /media/sdcard/ && \
         chroot /hostfs mount -o remount,ro /media/sdcard
     `;
 
