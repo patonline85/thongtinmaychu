@@ -204,22 +204,30 @@ app.get('/api/docker', requireAuth, (req, res) => {
     });
 });
 
+// Biến toàn cục để theo dõi trạng thái
+let isBackingUp = false;
+
 // API Kích hoạt Backup (Đồng bộ Rsync sang thẻ nhớ)
 app.post('/api/backup', requireAuth, (req, res) => {
-    // Dùng chroot /hostfs để "nhập hồn" ra ngoài máy chủ thật
-    // Đường dẫn trả về nguyên gốc như khi gõ trên terminal
+    if (isBackingUp) {
+        return res.status(400).json({ success: false, error: "Hệ thống đang đồng bộ ngầm rồi!" });
+    }
+    
+    // Đánh dấu đang chạy và PHẢN HỒI NGAY cho giao diện web
+    isBackingUp = true;
+    res.json({ success: true, message: "Đã kích hoạt đồng bộ ngầm!" });
+
     const backupCommand = `
         chroot /hostfs mount -o remount,rw /media/sdcard && \
         chroot /hostfs rsync -aAX --delete --exclude=/dev/* --exclude=/proc/* --exclude=/sys/* --exclude=/tmp/* --exclude=/run/* --exclude=/mnt/* --exclude=/media/* --exclude=/lost+found / /media/sdcard/ && \
         chroot /hostfs mount -o remount,ro /media/sdcard
     `;
 
+    // Chạy ngầm tiến trình nặng
     exec(backupCommand, (err, stdout, stderr) => {
-        if (err) {
-            console.error("⛔ Lỗi Backup:", err.message);
-            return res.status(500).json({ success: false, error: "Đồng bộ thất bại. Vui lòng kiểm tra thẻ nhớ." });
-        }
-        res.json({ success: true, message: "Đồng bộ dữ liệu thành công!" });
+        isBackingUp = false; // Nhả cờ khi chạy xong
+        if (err) console.error("⛔ Lỗi Backup ngầm:", err.message);
+        else console.log("✅ Đã hoàn tất đồng bộ ngầm!");
     });
 });
 
