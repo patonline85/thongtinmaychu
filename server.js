@@ -63,6 +63,40 @@ app.get('/api/logout', (req, res) => {
 
 // API Lấy thông số hệ thống (CPU, RAM, Ổ cứng, USB)
 app.get('/api/system', requireAuth, (req, res) => {
+    // --- CHỨC NĂNG TỰ ĐỘNG DÒ VÀ MOUNT THIẾT BỊ VẠN NĂNG (Bổ sung mới) ---
+    // Quét ngầm để tự động mount thẻ nhớ/USB vào /media/sdcard (không ảnh hưởng đến phản hồi UI)
+    exec(`chroot /hostfs sh -c "lsblk -ln -o NAME,MOUNTPOINT,TYPE | grep part | grep -v mmcblk2"`, (devErr, devStdout) => {
+        if (!devErr && devStdout) {
+            const lines = devStdout.trim().split('\n');
+            let targetPartition = null;
+            let isMounted = false;
+
+            // Ưu tiên tìm phân vùng số 2 (sdX2 hoặc mmcblkXp2)
+            for (let line of lines) {
+                const [name, mountpoint] = line.trim().split(/\s+/);
+                if (name.endsWith('2') || name.endsWith('p2')) {
+                    targetPartition = name;
+                    if (mountpoint === '/media/sdcard') isMounted = true;
+                    break;
+                }
+            }
+            // Nếu không có phân vùng 2, lấy phân vùng đầu tiên
+            if (!targetPartition && lines.length > 0) {
+                const [name, mountpoint] = lines[0].trim().split(/\s+/);
+                targetPartition = name;
+                if (mountpoint === '/media/sdcard') isMounted = true;
+            }
+
+            // Tiến hành mount nếu chưa kết nối
+            if (targetPartition && !isMounted) {
+                exec(`chroot /hostfs sh -c "mkdir -p /media/sdcard && mount /dev/${targetPartition} /media/sdcard"`, (mErr) => {
+                    if (!mErr) console.log(`✅ Tự động kết nối /dev/${targetPartition} thành công!`);
+                });
+            }
+        }
+    });
+    // ---------------------------------------------------------------------
+
     const totalMem = os.totalmem();
     const freeMem = os.freemem();
     const usedMem = totalMem - freeMem;
@@ -126,7 +160,7 @@ app.get('/api/system', requireAuth, (req, res) => {
                             const parts = line.trim().split(/\s+/);
                             const size = parts[1]; 
                             const model = parts.slice(2).join(' ') || "Generic USB"; 
-                            return `Đã cắm: <b>${model}</b><br>Dung lượng phần cứng: <span class="text-clay font-bold">${size}</span> <br><span class="text-ink/60 text-[11px] mt-1 block tracking-wide">* Cần mount để xem chi tiết</span>`;
+                            return `Đã cắm: <b>${model}</b><br>Dung lượng phần cứng: <span class="text-clay font-bold">${size}</span> <br><span class="text-ink/60 text-[11px] mt-1 block tracking-wide">* Đang tiến hành kết nối (Auto-Mount)...</span>`;
                         });
                         
                         return res.json({
@@ -184,10 +218,8 @@ app.get('/api/system', requireAuth, (req, res) => {
     });
 });
 
-
 // API Lấy thông số Docker (Thay thế ctop)
 app.get('/api/docker', requireAuth, (req, res) => {
-    // ĐÃ XÓA {{.Status}} ĐỂ FIX LỖI TEMPLATE PARSING
     exec('docker stats --no-stream --format "{{.Name}}|{{.CPUPerc}}|{{.MemUsage}}|{{.MemPerc}}" ', (err, stdout, stderr) => {
         if (err || stderr) {
             console.error("⛔ Lỗi lấy dữ liệu Docker:", err?.message || stderr);
@@ -210,37 +242,34 @@ app.get('/api/docker', requireAuth, (req, res) => {
 // Biến toàn cục để theo dõi trạng thái
 let isBackingUp = false;
 
-// API Kích hoạt Backup (Đồng bộ Rsync sang thẻ nhớ)
+// API Kích hoạt Backup (Đồng bộ Rsync sang thiết bị ngoài)
 app.post('/api/backup', requireAuth, (req, res) => {
     if (isBackingUp) {
         return res.status(400).json({ success: false, error: "Hệ thống đang đồng bộ ngầm rồi!" });
     }
     
-    // Đánh dấu đang chạy và PHẢN HỒI NGAY cho giao diện web
     isBackingUp = true;
     res.json({ success: true, message: "Đã kích hoạt đồng bộ ngầm!" });
 
+    // Tự động tìm thiết bị đang mount và mở khóa bằng TARGET_DEV
     const backupCommand = `
-        chroot /hostfs mount -o remount,rw /media/sdcard && \
+        TARGET_DEV=$(chroot /hostfs sh -c "df | grep /media/sdcard | awk '{print \\$1}'") && \
+        if [ ! -z "$TARGET_DEV" ]; then chroot /hostfs mount -o remount,rw $TARGET_DEV; fi && \
         chroot /hostfs rsync -aAXxHS --delete --exclude='/dev/*' --exclude='/proc/*' --exclude='/sys/*' --exclude='/tmp/*' --exclude='/run/*' --exclude='/mnt/*' --exclude='/media/*' --exclude='/lost+found' / /media/sdcard/ && \
-        chroot /hostfs mount -o remount,ro /media/sdcard
+        if [ ! -z "$TARGET_DEV" ]; then chroot /hostfs mount -o remount,ro $TARGET_DEV; fi
     `;
 
-    // Chạy ngầm tiến trình nặng
     exec(backupCommand, (err, stdout, stderr) => {
-        isBackingUp = false; // Nhả cờ khi chạy xong
+        isBackingUp = false;
         if (err) console.error("⛔ Lỗi Backup ngầm:", err.message);
         else console.log("✅ Đã hoàn tất đồng bộ ngầm!");
     });
 });
 
-// API Ngắt kết nối an toàn (Unmount)
+// API Ngắt kết nối an toàn (Unmount vạn năng)
 app.post('/api/unmount', requireAuth, (req, res) => {
-    // Dùng sh -c để chạy chuỗi lệnh: 
-    // umount -l (Lazy unmount): Cưỡng chế cắt đứt kết nối ngay lập tức để không bị kẹt báo lỗi busy.
-    // Tháo cả phân vùng Root (/media/sdcard) và Boot (/dev/mmcblk1p1).
-    // Thêm exit 0 để API luôn trả về thành công cho giao diện.
-    const unmountCommand = `chroot /hostfs sh -c "umount -l /media/sdcard 2>/dev/null; umount -l /dev/mmcblk1p1 2>/dev/null; exit 0"`;
+    // Quét sạch sẽ mọi phân vùng có thể tranh chấp để ngắt kết nối an toàn
+    const unmountCommand = `chroot /hostfs sh -c "umount -l /media/sdcard 2>/dev/null; umount -l /dev/sda1 2>/dev/null; umount -l /dev/sda2 2>/dev/null; umount -l /dev/mmcblk1p1 2>/dev/null; umount -l /dev/mmcblk1p2 2>/dev/null; exit 0"`;
 
     exec(unmountCommand, (err, stdout, stderr) => {
         if (err) {
