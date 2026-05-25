@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Server Monitor Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+</head>
+<body class="bg-gray-900 text-white font-sans antialiased">
+
+    <div id="login-screen" class="fixed inset-0 flex items-center justify-center bg-gray-900 z-50">
+        <div class="bg-gray-800 p-8 rounded-2xl shadow-xl w-96 text-center border border-gray-700">
+            <h2 class="text-2xl font-bold mb-6 text-blue-400"><i class="fa-solid fa-server mr-2"></i>Server Login</h2>
+            <input type="text" id="username" placeholder="Tài khoản" class="w-full bg-gray-700 text-white px-4 py-3 rounded-lg mb-4 outline-none focus:ring-2 focus:ring-blue-500">
+            <input type="password" id="password" placeholder="Mật khẩu" class="w-full bg-gray-700 text-white px-4 py-3 rounded-lg mb-6 outline-none focus:ring-2 focus:ring-blue-500">
+            <button onclick="login()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-lg transition">Đăng nhập</button>
+            <p id="login-error" class="text-red-400 mt-4 text-sm hidden"></p>
+        </div>
+    </div>
+
+    <div id="dashboard-screen" class="hidden max-w-6xl mx-auto p-6">
+        <div class="flex justify-between items-center mb-8">
+            <h1 class="text-3xl font-bold"><i class="fa-solid fa-gauge-high text-blue-500 mr-2"></i>Armbian Monitor</h1>
+            <a href="/api/logout" class="bg-red-600 hover:bg-red-500 px-4 py-2 rounded-lg text-sm font-bold transition">Đăng xuất</a>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            <div class="bg-gray-800 p-6 rounded-2xl border border-gray-700 shadow-lg">
+                <h3 class="text-gray-400 font-semibold mb-2"><i class="fa-solid fa-microchip mr-2"></i>CPU Máy Chủ</h3>
+                <div class="flex items-end gap-2">
+                    <span id="sys-cpu" class="text-4xl font-bold text-blue-400">0%</span>
+                </div>
+            </div>
+            <div class="bg-gray-800 p-6 rounded-2xl border border-gray-700 shadow-lg">
+                <h3 class="text-gray-400 font-semibold mb-2"><i class="fa-solid fa-memory mr-2"></i>RAM Máy Chủ</h3>
+                <div class="flex items-end justify-between">
+                    <div>
+                        <span id="sys-ram-pct" class="text-4xl font-bold text-green-400">0%</span>
+                    </div>
+                    <div id="sys-ram-detail" class="text-sm text-gray-400 font-mono">0 / 0 GB</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-gray-800 rounded-2xl border border-gray-700 shadow-lg overflow-hidden">
+            <div class="p-5 border-b border-gray-700 bg-gray-800/50">
+                <h3 class="text-lg font-bold"><i class="fa-brands fa-docker text-blue-500 mr-2"></i>Tiến trình Docker (Cập nhật 3s/lần)</h3>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left">
+                    <thead class="bg-gray-900/50 text-gray-400 text-sm">
+                        <tr>
+                            <th class="p-4 font-semibold">Tên Container</th>
+                            <th class="p-4 font-semibold">CPU %</th>
+                            <th class="p-4 font-semibold">RAM Sử Dụng</th>
+                            <th class="p-4 font-semibold">RAM %</th>
+                        </tr>
+                    </thead>
+                    <tbody id="docker-list" class="divide-y divide-gray-700 text-sm font-mono">
+                        </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let intervalId = null;
+
+        async function login() {
+            const user = document.getElementById('username').value;
+            const pass = document.getElementById('password').value;
+            const err = document.getElementById('login-error');
+            
+            const res = await fetch('/api/login', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ username: user, password: pass })
+            });
+            const data = await res.json();
+            
+            if (data.success) {
+                document.getElementById('login-screen').classList.add('hidden');
+                document.getElementById('dashboard-screen').classList.remove('hidden');
+                err.classList.add('hidden');
+                startMonitoring();
+            } else {
+                err.textContent = data.error;
+                err.classList.remove('hidden');
+            }
+        }
+
+        async function fetchSystem() {
+            try {
+                const res = await fetch('/api/system');
+                if(res.status === 401) return location.reload();
+                const data = await res.json();
+                document.getElementById('sys-cpu').textContent = data.cpu + '%';
+                document.getElementById('sys-ram-pct').textContent = data.memory.percent + '%';
+                document.getElementById('sys-ram-detail').textContent = `${data.memory.used} GB / ${data.memory.total} GB`;
+            } catch (e) {}
+        }
+
+        async function fetchDocker() {
+            try {
+                const res = await fetch('/api/docker');
+                const data = await res.json();
+                const tbody = document.getElementById('docker-list');
+                tbody.innerHTML = '';
+                
+                data.containers.forEach(c => {
+                    const cpuNum = parseFloat(c.cpu);
+                    // Đổi màu nếu CPU cao quá 50%
+                    const cpuColor = cpuNum > 50 ? 'text-red-400 font-bold' : (cpuNum > 10 ? 'text-yellow-400' : 'text-gray-300');
+                    
+                    tbody.innerHTML += `
+                        <tr class="hover:bg-gray-700/50 transition">
+                            <td class="p-4 text-blue-300 font-bold">${c.name}</td>
+                            <td class="p-4 ${cpuColor}">${c.cpu}</td>
+                            <td class="p-4 text-gray-300">${c.mem}</td>
+                            <td class="p-4 text-gray-300">${c.memPerc}</td>
+                        </tr>
+                    `;
+                });
+            } catch (e) {}
+        }
+
+        function startMonitoring() {
+            fetchSystem();
+            fetchDocker();
+            intervalId = setInterval(() => {
+                fetchSystem();
+                fetchDocker();
+            }, 3000); // 3 giây cập nhật 1 lần
+        }
+
+        // Tự động thử kiểm tra xem đã đăng nhập chưa khi mở trang
+        fetch('/api/system').then(res => {
+            if(res.status === 200) {
+                document.getElementById('login-screen').classList.add('hidden');
+                document.getElementById('dashboard-screen').classList.remove('hidden');
+                startMonitoring();
+            }
+        });
+    </script>
+</body>
+</html>
