@@ -222,6 +222,18 @@ app.post('/api/backup', requireAuth, (req, res) => {
     });
 });
 
+// API Ngắt kết nối an toàn (Unmount)
+app.post('/api/unmount', requireAuth, (req, res) => {
+    // Gọi lệnh unmount an toàn
+    exec("sudo umount /media/sdcard", (err, stdout, stderr) => {
+        if (err) {
+            console.error("⛔ Lỗi Unmount:", err.message);
+            return res.status(500).json({ success: false, error: "Không thể ngắt kết nối. Có thể thiết bị đang bận ghi dữ liệu." });
+        }
+        res.json({ success: true, message: "Đã ngắt kết nối an toàn!" });
+    });
+});
+
 // Phục vụ giao diện Web
 app.use(express.static(path.join(__dirname, 'public')));
 
