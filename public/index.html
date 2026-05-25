@@ -307,13 +307,14 @@
             }
         }
         
-        function startMonitoring() {
-            fetchSystem();
-            fetchDocker();
-            intervalId = setInterval(() => {
-                fetchSystem();
-                fetchDocker();
-            }, 3000); 
+        async function startMonitoring() {
+            try {
+                await fetchSystem();
+                await fetchDocker();
+            } finally {
+                // Đảm bảo lệnh trước chạy xong 100% rồi mới đếm ngược 3 giây để gọi lệnh tiếp theo
+                setTimeout(startMonitoring, 3000); 
+            }
         }
         
         // ==========================================
