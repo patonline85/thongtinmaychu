@@ -206,11 +206,12 @@ app.get('/api/docker', requireAuth, (req, res) => {
 
 // API Kích hoạt Backup (Đồng bộ Rsync sang thẻ nhớ)
 app.post('/api/backup', requireAuth, (req, res) => {
-    // Đã sửa lại cú pháp exclude tường minh để tương thích với Node.js sh
+    // 1. Bỏ sudo vì container đã là root
+    // 2. Trỏ đường dẫn vào /hostfs để backup đúng máy chủ Host
     const backupCommand = `
-        sudo mount -o remount,rw /media/sdcard && \
-        sudo rsync -aAX --delete --exclude=/dev/* --exclude=/proc/* --exclude=/sys/* --exclude=/tmp/* --exclude=/run/* --exclude=/mnt/* --exclude=/media/* --exclude=/lost+found / /media/sdcard/ && \
-        sudo mount -o remount,ro /media/sdcard
+        mount -o remount,rw /hostfs/media/sdcard && \
+        rsync -aAX --delete --exclude=/hostfs/dev/* --exclude=/hostfs/proc/* --exclude=/hostfs/sys/* --exclude=/hostfs/tmp/* --exclude=/hostfs/run/* --exclude=/hostfs/mnt/* --exclude=/hostfs/media/* --exclude=/hostfs/lost+found /hostfs/ /hostfs/media/sdcard/ && \
+        mount -o remount,ro /hostfs/media/sdcard
     `;
 
     exec(backupCommand, (err, stdout, stderr) => {
@@ -224,11 +225,11 @@ app.post('/api/backup', requireAuth, (req, res) => {
 
 // API Ngắt kết nối an toàn (Unmount)
 app.post('/api/unmount', requireAuth, (req, res) => {
-    // Gọi lệnh unmount an toàn
-    exec("sudo umount /media/sdcard", (err, stdout, stderr) => {
+    // Bỏ sudo và trỏ tới /hostfs
+    exec("umount /hostfs/media/sdcard", (err, stdout, stderr) => {
         if (err) {
             console.error("⛔ Lỗi Unmount:", err.message);
-            return res.status(500).json({ success: false, error: "Không thể ngắt kết nối. Có thể thiết bị đang bận ghi dữ liệu." });
+            return res.status(500).json({ success: false, error: "Không thể ngắt kết nối. Có thể thiết bị đang bận." });
         }
         res.json({ success: true, message: "Đã ngắt kết nối an toàn!" });
     });
