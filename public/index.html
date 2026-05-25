@@ -126,9 +126,13 @@
                 const usbList = document.getElementById('usb-list');
                 usbList.innerHTML = '';
                 data.usb.forEach(item => {
-                    // Cắt bớt chữ "Bus 001 Device 001: ID..." để giao diện dễ nhìn hơn
-                    const usbName = item.includes('ID ') ? item.split('ID ')[1] : item;
-                    usbList.innerHTML += `<li class="pt-2 flex items-start"><i class="fa-solid fa-plug text-gray-500 mr-3 mt-1"></i><span>${usbName}</span></li>`;
+                    // Nếu không có USB thì icon màu xám, có thì icon màu xanh dương
+                    const iconColor = item.includes('Không có') ? 'text-gray-600' : 'text-blue-400';
+                    usbList.innerHTML += `
+                        <li class="pt-2 pb-2 flex items-start leading-relaxed">
+                            <i class="fa-brands fa-usb ${iconColor} mr-3 mt-1.5 text-lg"></i>
+                            <span class="flex-1">${item}</span>
+                        </li>`;
                 });
 
             } catch (e) {}
