@@ -55,21 +55,38 @@ app.get('/api/system', requireAuth, (req, res) => {
                 total: diskParts[0], used: diskParts[1], free: diskParts[2], percent: diskParts[3]
             } : { total: "0G", used: "0G", free: "0G", percent: "0%" };
 
-            // 1. LỚP 1: Quét các ổ USB đã MOUNT (Đọc được dung lượng Đã dùng/Còn trống)
-            exec("df -h | awk '($1 ~ /^\\/dev\\/sd/ || $1 ~ /^\\/dev\\/mmcblk/) && $6 != \"/\" && $6 != \"/boot\" {print $1 \"|\" $2 \"|\" $4}'", (errUsb, stdoutUsb) => {
+            // 1. LỚP 1: Quét ổ lưu trữ ĐÃ MOUNT (Loại bỏ ổ OS mmcblk2 và lọc trùng lặp)
+            exec("df -h | awk '($1 ~ /^\\/dev\\/sd/ || $1 ~ /^\\/dev\\/mmcblk/) && $1 !~ /mmcblk2/ {print $1 \"|\" $2 \"|\" $4}'", (errUsb, stdoutUsb) => {
                 let usbList = [];
                 
                 if (stdoutUsb && stdoutUsb.trim()) {
                     const lines = stdoutUsb.trim().split('\n');
-                    usbList = lines.map(line => {
+                    
+                    // Sử dụng Map để lọc bỏ các phân vùng bị lặp do mount ảo của Docker/Linux
+                    const uniqueDrives = new Map();
+                    lines.forEach(line => {
                         const [name, total, free] = line.split('|');
+                        if (name && !uniqueDrives.has(name)) {
+                            uniqueDrives.set(name, { total, free });
+                        }
+                    });
+                    
+                    // Tạo danh sách hiển thị UI
+                    usbList = Array.from(uniqueDrives.entries()).map(([name, data]) => {
                         const driveName = name.replace('/dev/', '').toUpperCase();
-                        return `Đã gắn USB <b>(${driveName})</b><br>Tổng: <span class="text-clay font-bold">${total}</span> - Trống: <span class="text-clay font-bold">${free}</span>`;
+                        // Nếu là mmcblk thì gọi là Thẻ nhớ, nếu là sd thì gọi là USB
+                        const typeName = driveName.includes('MMCBLK') ? 'Thẻ nhớ' : 'USB';
+                        
+                        return `Đã gắn ${typeName} <b>(${driveName})</b><br>Tổng: <span class="text-clay font-bold">${data.total}</span> - Trống: <span class="text-clay font-bold">${data.free}</span>`;
                     });
                     
                     return res.json({
                         cpu: cpuUsage.toFixed(1),
-                        memory: { used: (usedMem / 1024 / 1024 / 1024).toFixed(2), total: (totalMem / 1024 / 1024 / 1024).toFixed(2), percent: ((usedMem / totalMem) * 100).toFixed(1) },
+                        memory: {
+                            used: (usedMem / 1024 / 1024 / 1024).toFixed(2),
+                            total: (totalMem / 1024 / 1024 / 1024).toFixed(2),
+                            percent: ((usedMem / totalMem) * 100).toFixed(1)
+                        },
                         disk: diskInfo,
                         usb: usbList
                     });
