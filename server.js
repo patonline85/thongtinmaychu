@@ -55,7 +55,7 @@ app.get('/api/system', requireAuth, (req, res) => {
                 total: diskParts[0], used: diskParts[1], free: diskParts[2], percent: diskParts[3]
             } : { total: "0G", used: "0G", free: "0G", percent: "0%" };
 
-            // 1. Quét các ổ USB lưu trữ (Dòng bắt đầu bằng /dev/sd trên Armbian)
+            // 1. Quét các ổ USB lưu trữ ĐÃ MOUNT (Sẽ có đủ Tổng, Đã dùng, Trống)
             exec("df -h | awk '$1 ~ /^\\/dev\\/sd/ {print $1 \"|\" $2 \"|\" $4}'", (errUsb, stdoutUsb) => {
                 let usbList = [];
                 
@@ -64,7 +64,8 @@ app.get('/api/system', requireAuth, (req, res) => {
                     usbList = lines.map(line => {
                         const [name, total, free] = line.split('|');
                         const driveName = name.replace('/dev/', '').toUpperCase();
-                        return `Đã gắn USB <b>(${driveName})</b><br>Tổng: <span class="text-blue-400 font-bold">${total}</span> - Trống: <span class="text-green-400 font-bold">${free}</span>`;
+                        // Sử dụng text-clay cho các thông số quan trọng theo Design System
+                        return `Đã gắn USB <b>(${driveName})</b><br>Tổng: <span class="text-clay font-bold">${total}</span> - Trống: <span class="text-clay font-bold">${free}</span>`;
                     });
                     
                     return res.json({
@@ -79,22 +80,25 @@ app.get('/api/system', requireAuth, (req, res) => {
                     });
                 }
                 
-                // 2. NẾU CHƯA CÓ USB NÀO MOUNT, LỌC BỎ CÁC CỔNG ẢO
-                exec("lsusb", (errLs, stdoutLs) => {
-                    if (stdoutLs && stdoutLs.trim()) {
-                        const lines = stdoutLs.trim().split('\n');
+                // 2. NẾU CHƯA MOUNT: Dùng lsblk để lấy Tổng Dung Lượng vật lý
+                // Lệnh lsblk -d -n -o NAME,SIZE,MODEL liệt kê các thiết bị (trừ phân vùng nhỏ), bắt đầu bằng sd (thường là USB)
+                exec("lsblk -d -n -o NAME,SIZE,MODEL | grep '^sd'", (errBlk, stdoutBlk) => {
+                    if (stdoutBlk && stdoutBlk.trim()) {
+                        const lines = stdoutBlk.trim().split('\n');
                         
-                        // LỌC MẠNH TAY: Bỏ qua các dòng có chứa mã ảo (1d6b), chữ Linux, root hub, Host Controller
-                        const filteredLines = lines.filter(line => !/1d6b|Linux|root hub|Host Controller/i.test(line));
-                        
-                        usbList = filteredLines.map(line => {
-                            const usbName = line.includes('ID ') ? line.split('ID ')[1] : line;
-                            return `Đã cắm USB: ${usbName} <br><span class="text-gray-500 text-[10px]">(Chưa mount dữ liệu)</span>`;
+                        usbList = lines.map(line => {
+                            // Tách chuỗi theo khoảng trắng: sda  14.9G  Cruzer Blade
+                            const parts = line.trim().split(/\s+/);
+                            const size = parts[1]; // Lấy dung lượng (ví dụ: 14.9G)
+                            const model = parts.slice(2).join(' ') || "Generic USB"; // Lấy tên model
+                            
+                            // Sử dụng text-ink/60 cho ghi chú phụ để tuân thủ Paper & Ink
+                            return `Đã cắm: <b>${model}</b><br>Dung lượng phần cứng: <span class="text-clay font-bold">${size}</span> <br><span class="text-ink/60 text-[11px] mt-1 block tracking-wide">* Cần mount để xem dung lượng trống</span>`;
                         });
                     }
                     
                     if (usbList.length === 0) {
-                        usbList = ["Không có USB nào đang gắn"];
+                        usbList = ["Không có thiết bị USB nào đang gắn"];
                     }
                     
                     res.json({
