@@ -118,10 +118,10 @@
                 document.getElementById('sys-ram-pct').textContent = data.memory.percent + '%';
                 document.getElementById('sys-ram-detail').textContent = `${data.memory.used} GB / ${data.memory.total} GB`;
                 
-                // Cập nhật Ổ Cứng
+                // Cập nhật Ổ Cứng (Đã thêm dòng Còn trống)
                 document.getElementById('sys-disk-pct').textContent = data.disk.percent;
-                document.getElementById('sys-disk-detail').innerHTML = `Đã dùng: ${data.disk.used}<br>Tổng: ${data.disk.total}`;
-
+                document.getElementById('sys-disk-detail').innerHTML = `Đã dùng: ${data.disk.used}<br>Còn trống: ${data.disk.free}<br>Tổng: ${data.disk.total}`;
+                
                 // Cập nhật USB
                 const usbList = document.getElementById('usb-list');
                 usbList.innerHTML = '';
