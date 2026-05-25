@@ -55,7 +55,6 @@ app.get('/api/system', requireAuth, (req, res) => {
                 total: diskParts[0], used: diskParts[1], free: diskParts[2], percent: diskParts[3]
             } : { total: "0G", used: "0G", free: "0G", percent: "0%" };
 
-            // --- BẮT ĐẦU ĐOẠN XỬ LÝ USB MỚI ---
             // 1. Quét các ổ USB lưu trữ (Dòng bắt đầu bằng /dev/sd trên Armbian)
             exec("df -h | awk '$1 ~ /^\\/dev\\/sd/ {print $1 \"|\" $2 \"|\" $4}'", (errUsb, stdoutUsb) => {
                 let usbList = [];
@@ -64,12 +63,10 @@ app.get('/api/system', requireAuth, (req, res) => {
                     const lines = stdoutUsb.trim().split('\n');
                     usbList = lines.map(line => {
                         const [name, total, free] = line.split('|');
-                        const driveName = name.replace('/dev/', '').toUpperCase(); // Chuyển thành SDA1, SDB1...
-                        // Trả về HTML đã tô màu dung lượng
+                        const driveName = name.replace('/dev/', '').toUpperCase();
                         return `Đã gắn USB <b>(${driveName})</b><br>Tổng: <span class="text-blue-400 font-bold">${total}</span> - Trống: <span class="text-green-400 font-bold">${free}</span>`;
                     });
                     
-                    // Nếu tìm thấy USB lưu trữ thì trả kết quả về Web ngay
                     return res.json({
                         cpu: cpuUsage.toFixed(1),
                         memory: {
@@ -82,11 +79,15 @@ app.get('/api/system', requireAuth, (req, res) => {
                     });
                 }
                 
-                // 2. Nếu không có ổ lưu trữ nào được mount, quét cổng USB nhưng ẨN hệ thống bo mạch chủ (Linux Foundation)
-                exec("lsusb | grep -v 'Linux Foundation'", (errLs, stdoutLs) => {
+                // 2. NẾU CHƯA CÓ USB NÀO MOUNT, LỌC BỎ CÁC CỔNG ẢO
+                exec("lsusb", (errLs, stdoutLs) => {
                     if (stdoutLs && stdoutLs.trim()) {
                         const lines = stdoutLs.trim().split('\n');
-                        usbList = lines.map(line => {
+                        
+                        // LỌC MẠNH TAY: Bỏ qua các dòng có chứa mã ảo (1d6b), chữ Linux, root hub, Host Controller
+                        const filteredLines = lines.filter(line => !/1d6b|Linux|root hub|Host Controller/i.test(line));
+                        
+                        usbList = filteredLines.map(line => {
                             const usbName = line.includes('ID ') ? line.split('ID ')[1] : line;
                             return `Đã cắm USB: ${usbName} <br><span class="text-gray-500 text-[10px]">(Chưa mount dữ liệu)</span>`;
                         });
@@ -108,10 +109,10 @@ app.get('/api/system', requireAuth, (req, res) => {
                     });
                 });
             });
-            // --- KẾT THÚC ĐOẠN XỬ LÝ USB ---
         });
     });
 });
+
 
 // API Lấy thông số Docker (Thay thế ctop)
 app.get('/api/docker', requireAuth, (req, res) => {
