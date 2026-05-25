@@ -266,10 +266,21 @@ app.post('/api/backup', requireAuth, (req, res) => {
     });
 });
 
-// API Ngắt kết nối an toàn (Unmount vạn năng)
+// API Ngắt kết nối an toàn (Unmount vạn năng - Bản nâng cấp siêu bạo lực)
 app.post('/api/unmount', requireAuth, (req, res) => {
-    // Quét sạch sẽ mọi phân vùng có thể tranh chấp để ngắt kết nối an toàn
-    const unmountCommand = `chroot /hostfs sh -c "umount -l /media/sdcard 2>/dev/null; umount -l /dev/sda1 2>/dev/null; umount -l /dev/sda2 2>/dev/null; umount -l /dev/mmcblk1p1 2>/dev/null; umount -l /dev/mmcblk1p2 2>/dev/null; exit 0"`;
+    // 1. sync: Ép hệ thống ghi hết dữ liệu còn kẹt trên RAM xuống USB ngay lập tức.
+    // 2. umount -fl: Kết hợp Force (ép buộc) và Lazy (ngầm) để nhả ổ đĩa ngay mà không sợ bị nghẽn.
+    const unmountCommand = `
+        chroot /hostfs sh -c "
+            sync;
+            umount -fl /media/sdcard 2>/dev/null; 
+            umount -fl /dev/sda1 2>/dev/null; 
+            umount -fl /dev/sda2 2>/dev/null; 
+            umount -fl /dev/mmcblk1p1 2>/dev/null; 
+            umount -fl /dev/mmcblk1p2 2>/dev/null; 
+            exit 0
+        "
+    `;
 
     exec(unmountCommand, (err, stdout, stderr) => {
         if (err) {
