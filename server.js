@@ -56,7 +56,7 @@ app.get('/api/system', requireAuth, (req, res) => {
             } : { total: "0G", used: "0G", free: "0G", percent: "0%" };
 
             // 1. LỚP 1: Quét các ổ USB đã MOUNT (Đọc được dung lượng Đã dùng/Còn trống)
-            exec("df -h | awk '$1 ~ /^\\/dev\\/sd/ {print $1 \"|\" $2 \"|\" $4}'", (errUsb, stdoutUsb) => {
+            exec("df -h | awk '($1 ~ /^\\/dev\\/sd/ || $1 ~ /^\\/dev\\/mmcblk/) && $6 != \"/\" && $6 != \"/boot\" {print $1 \"|\" $2 \"|\" $4}'", (errUsb, stdoutUsb) => {
                 let usbList = [];
                 
                 if (stdoutUsb && stdoutUsb.trim()) {
