@@ -233,9 +233,16 @@
                     const iconColor = isNoDevice ? 'text-ink/30' : 'text-clay';
                     const textColor = isNoDevice ? 'text-ink/50' : 'text-ink';
                     usbList.innerHTML += `
-                        <li class="pt-3 pb-2 flex items-start leading-relaxed ${textColor} transition-all duration-300 hover:pl-2">
-                            <i class="fa-brands fa-usb ${iconColor} mr-3 mt-0.5 text-lg"></i>
-                            <span class="flex-1">${item}</span>
+                        <li class="pt-3 pb-2 flex items-center justify-between border-b border-paper last:border-0 transition-all duration-300 hover:pl-2">
+                            <div class="flex items-start ${textColor}">
+                                <i class="fa-brands fa-usb ${iconColor} mr-3 mt-0.5 text-lg"></i>
+                                <span class="leading-relaxed text-sm">${item}</span>
+                            </div>
+                            ${item.includes('Thẻ nhớ') ? `
+                                <button onclick="triggerBackup(this)" class="ml-3 shrink-0 bg-white border border-clay text-clay hover:bg-clay hover:text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow-sm hover:shadow-md transition-all active:scale-95 flex items-center gap-1">
+                                    <i class="fa-solid fa-rotate"></i> <span>Đồng bộ</span>
+                                </button>
+                            ` : ''}
                         </li>`;
                 });
         
@@ -303,6 +310,40 @@
                 })
                 .catch(() => {}); // Im lặng nếu có lỗi mạng ban đầu
         });
+
+        async function triggerBackup(btnElement) {
+            // 1. Đổi UI sang trạng thái Loading
+            const originalHTML = btnElement.innerHTML;
+            btnElement.disabled = true;
+            btnElement.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> <span>Đang xử lý...</span>`;
+            btnElement.classList.replace('hover:bg-clay', 'bg-paper');
+            btnElement.classList.replace('text-clay', 'text-ink/50');
+            btnElement.classList.replace('border-clay', 'border-transparent');
+        
+            try {
+                // 2. Gọi API Backup
+                const res = await fetch('/api/backup', { method: 'POST' });
+                const data = await res.json();
+        
+                // 3. Phản hồi UI
+                if (data.success) {
+                    btnElement.innerHTML = `<i class="fa-solid fa-check text-green-600"></i> <span class="text-green-600">Hoàn tất</span>`;
+                    setTimeout(() => resetBtn(), 3000); // Trả lại nút sau 3s
+                } else {
+                    alert(data.error);
+                    resetBtn();
+                }
+            } catch (e) {
+                alert("Lỗi kết nối đến máy chủ.");
+                resetBtn();
+            }
+        
+            function resetBtn() {
+                btnElement.disabled = false;
+                btnElement.innerHTML = originalHTML;
+                btnElement.className = "ml-3 shrink-0 bg-white border border-clay text-clay hover:bg-clay hover:text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow-sm hover:shadow-md transition-all active:scale-95 flex items-center gap-1";
+            }
+        }
     </script>
 </body>
 </html>
