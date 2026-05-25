@@ -251,7 +251,7 @@
                                 <i class="fa-brands fa-usb ${iconColor} mr-3 mt-0.5 text-lg"></i>
                                 <span class="leading-relaxed text-sm">${item}</span>
                             </div>
-                            ${item.includes('Thẻ nhớ') && !item.includes('P1') ? (
+                            ${item.includes('Đã gắn') && !item.includes('P1') && !item.includes('1)') ? (
                                 data.isBackingUp 
                                 ? `<div class="flex items-center gap-2 ml-3 shrink-0">
                                      <button disabled class="bg-paper text-ink/50 px-3 py-1.5 rounded-xl text-xs font-bold shadow-sm flex items-center gap-1">
