@@ -66,15 +66,6 @@ app.get('/api/system', requireAuth, (req, res) => {
     const totalMem = os.totalmem();
     const freeMem = os.freemem();
     const usedMem = totalMem - freeMem;
-
-    // Đọc nhiệt độ CPU (Mặc định Linux trả về millidegree Celsius)
-    let cpuTemp = "N/A";
-    try {
-        const tempString = fs.readFileSync('/sys/class/thermal/thermal_zone0/temp', 'utf8');
-        cpuTemp = (parseInt(tempString, 10) / 1000).toFixed(1);
-    } catch (e) {
-        // Bỏ qua nếu bo mạch không hỗ trợ đọc nhiệt độ theo chuẩn chung
-    }
     
     exec("top -bn1 | grep 'Cpu(s)' | sed 's/.*, *\\([0-9.]*\\)%* id.*/\\1/' | awk '{print 100 - $1}'", (errCpu, stdoutCpu) => {
         const cpuUsage = errCpu ? 0 : parseFloat(stdoutCpu.trim());
@@ -111,12 +102,14 @@ app.get('/api/system', requireAuth, (req, res) => {
                     });
                     
                     return res.json({
-                        cpu: cpuUsage.toFixed(1),
-                        temp: getThermalTemp('cpu')
+                        cpu: {
+                            usage: cpuUsage.toFixed(1),
+                            temp: getThermalTemp('cpu')
+                        },
                         memory: {
                             used: (usedMem / 1024 / 1024 / 1024).toFixed(2),
                             total: (totalMem / 1024 / 1024 / 1024).toFixed(2),
-                            percent: ((usedMem / totalMem) * 100).toFixed(1)
+                            percent: ((usedMem / totalMem) * 100).toFixed(1),
                             temp: getThermalTemp('ddr')
                         },
                         disk: diskInfo,
@@ -136,17 +129,22 @@ app.get('/api/system', requireAuth, (req, res) => {
                         });
                         
                         return res.json({
-                            cpu: cpuUsage.toFixed(1),
-                            temp: getThermalTemp('cpu')
-                            memory: { used: (usedMem / 1024 / 1024 / 1024).toFixed(2), total: (totalMem / 1024 / 1024 / 1024).toFixed(2), percent: ((usedMem / totalMem) * 100).toFixed(1) },
+                            cpu: {
+                                usage: cpuUsage.toFixed(1),
+                                temp: getThermalTemp('cpu')
+                            },
+                            memory: {
+                                used: (usedMem / 1024 / 1024 / 1024).toFixed(2),
+                                total: (totalMem / 1024 / 1024 / 1024).toFixed(2),
+                                percent: ((usedMem / totalMem) * 100).toFixed(1),
+                                temp: getThermalTemp('ddr')
+                            },
                             disk: diskInfo,
                             usb: usbList
-                            temp: getThermalTemp('ddr')
                         });
                     }
                     
                     // 3. LỚP 3: Quét THIẾT BỊ VẬT LÝ (Dùng lsusb - Cứu cánh cuối cùng)
-                    // Dành cho Đầu đọc thẻ nhớ chưa cắm thẻ, hoặc USB bị lỗi phân vùng
                     exec("lsusb", (errLs, stdoutLs) => {
                         if (stdoutLs && stdoutLs.trim()) {
                             const lines = stdoutLs.trim().split('\n');
@@ -163,10 +161,16 @@ app.get('/api/system', requireAuth, (req, res) => {
                         }
                         
                         res.json({
-                            cpu: cpuUsage.toFixed(1),
-                            temp: getThermalTemp('cpu')
-                            memory: { used: (usedMem / 1024 / 1024 / 1024).toFixed(2), total: (totalMem / 1024 / 1024 / 1024).toFixed(2), percent: ((usedMem / totalMem) * 100).toFixed(1) },
-                            temp: getThermalTemp('ddr')
+                            cpu: {
+                                usage: cpuUsage.toFixed(1),
+                                temp: getThermalTemp('cpu')
+                            },
+                            memory: {
+                                used: (usedMem / 1024 / 1024 / 1024).toFixed(2),
+                                total: (totalMem / 1024 / 1024 / 1024).toFixed(2),
+                                percent: ((usedMem / totalMem) * 100).toFixed(1),
+                                temp: getThermalTemp('ddr')
+                            },
                             disk: diskInfo,
                             usb: usbList
                         });
