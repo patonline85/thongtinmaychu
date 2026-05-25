@@ -55,7 +55,7 @@ app.get('/api/system', requireAuth, (req, res) => {
                 total: diskParts[0], used: diskParts[1], free: diskParts[2], percent: diskParts[3]
             } : { total: "0G", used: "0G", free: "0G", percent: "0%" };
 
-            // 1. Quét các ổ USB lưu trữ ĐÃ MOUNT (Sẽ có đủ Tổng, Đã dùng, Trống)
+            // 1. LỚP 1: Quét các ổ USB đã MOUNT (Đọc được dung lượng Đã dùng/Còn trống)
             exec("df -h | awk '$1 ~ /^\\/dev\\/sd/ {print $1 \"|\" $2 \"|\" $4}'", (errUsb, stdoutUsb) => {
                 let usbList = [];
                 
@@ -64,52 +64,59 @@ app.get('/api/system', requireAuth, (req, res) => {
                     usbList = lines.map(line => {
                         const [name, total, free] = line.split('|');
                         const driveName = name.replace('/dev/', '').toUpperCase();
-                        // Sử dụng text-clay cho các thông số quan trọng theo Design System
                         return `Đã gắn USB <b>(${driveName})</b><br>Tổng: <span class="text-clay font-bold">${total}</span> - Trống: <span class="text-clay font-bold">${free}</span>`;
                     });
                     
                     return res.json({
                         cpu: cpuUsage.toFixed(1),
-                        memory: {
-                            used: (usedMem / 1024 / 1024 / 1024).toFixed(2),
-                            total: (totalMem / 1024 / 1024 / 1024).toFixed(2),
-                            percent: ((usedMem / totalMem) * 100).toFixed(1)
-                        },
+                        memory: { used: (usedMem / 1024 / 1024 / 1024).toFixed(2), total: (totalMem / 1024 / 1024 / 1024).toFixed(2), percent: ((usedMem / totalMem) * 100).toFixed(1) },
                         disk: diskInfo,
                         usb: usbList
                     });
                 }
                 
-                // 2. NẾU CHƯA MOUNT: Dùng lsblk để lấy Tổng Dung Lượng vật lý
-                // Lệnh lsblk -d -n -o NAME,SIZE,MODEL liệt kê các thiết bị (trừ phân vùng nhỏ), bắt đầu bằng sd (thường là USB)
+                // 2. LỚP 2: Quét ổ chưa Mount nhưng có DUNG LƯỢNG (Dùng lsblk)
                 exec("lsblk -d -n -o NAME,SIZE,MODEL | grep '^sd'", (errBlk, stdoutBlk) => {
                     if (stdoutBlk && stdoutBlk.trim()) {
                         const lines = stdoutBlk.trim().split('\n');
-                        
                         usbList = lines.map(line => {
-                            // Tách chuỗi theo khoảng trắng: sda  14.9G  Cruzer Blade
                             const parts = line.trim().split(/\s+/);
-                            const size = parts[1]; // Lấy dung lượng (ví dụ: 14.9G)
-                            const model = parts.slice(2).join(' ') || "Generic USB"; // Lấy tên model
-                            
-                            // Sử dụng text-ink/60 cho ghi chú phụ để tuân thủ Paper & Ink
-                            return `Đã cắm: <b>${model}</b><br>Dung lượng phần cứng: <span class="text-clay font-bold">${size}</span> <br><span class="text-ink/60 text-[11px] mt-1 block tracking-wide">* Cần mount để xem dung lượng trống</span>`;
+                            const size = parts[1]; 
+                            const model = parts.slice(2).join(' ') || "Generic USB"; 
+                            return `Đã cắm: <b>${model}</b><br>Dung lượng phần cứng: <span class="text-clay font-bold">${size}</span> <br><span class="text-ink/60 text-[11px] mt-1 block tracking-wide">* Cần mount để xem chi tiết</span>`;
+                        });
+                        
+                        return res.json({
+                            cpu: cpuUsage.toFixed(1),
+                            memory: { used: (usedMem / 1024 / 1024 / 1024).toFixed(2), total: (totalMem / 1024 / 1024 / 1024).toFixed(2), percent: ((usedMem / totalMem) * 100).toFixed(1) },
+                            disk: diskInfo,
+                            usb: usbList
                         });
                     }
                     
-                    if (usbList.length === 0) {
-                        usbList = ["Không có thiết bị USB nào đang gắn"];
-                    }
-                    
-                    res.json({
-                        cpu: cpuUsage.toFixed(1),
-                        memory: {
-                            used: (usedMem / 1024 / 1024 / 1024).toFixed(2),
-                            total: (totalMem / 1024 / 1024 / 1024).toFixed(2),
-                            percent: ((usedMem / totalMem) * 100).toFixed(1)
-                        },
-                        disk: diskInfo,
-                        usb: usbList
+                    // 3. LỚP 3: Quét THIẾT BỊ VẬT LÝ (Dùng lsusb - Cứu cánh cuối cùng)
+                    // Dành cho Đầu đọc thẻ nhớ chưa cắm thẻ, hoặc USB bị lỗi phân vùng
+                    exec("lsusb", (errLs, stdoutLs) => {
+                        if (stdoutLs && stdoutLs.trim()) {
+                            const lines = stdoutLs.trim().split('\n');
+                            const filteredLines = lines.filter(line => !/1d6b|Linux|root hub|Host Controller/i.test(line));
+                            
+                            usbList = filteredLines.map(line => {
+                                const usbName = line.includes('ID ') ? line.split('ID ')[1] : line;
+                                return `Nhận diện thiết bị: <b>${usbName}</b><br><span class="text-ink/60 text-[11px] block mt-1 leading-relaxed">* Chưa đọc được dung lượng. Nếu là đầu đọc, vui lòng kiểm tra thẻ nhớ.</span>`;
+                            });
+                        }
+                        
+                        if (usbList.length === 0) {
+                            usbList = ["Không có thiết bị USB nào đang gắn"];
+                        }
+                        
+                        res.json({
+                            cpu: cpuUsage.toFixed(1),
+                            memory: { used: (usedMem / 1024 / 1024 / 1024).toFixed(2), total: (totalMem / 1024 / 1024 / 1024).toFixed(2), percent: ((usedMem / totalMem) * 100).toFixed(1) },
+                            disk: diskInfo,
+                            usb: usbList
+                        });
                     });
                 });
             });
