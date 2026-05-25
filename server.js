@@ -206,10 +206,10 @@ app.get('/api/docker', requireAuth, (req, res) => {
 
 // API Kích hoạt Backup (Đồng bộ Rsync sang thẻ nhớ)
 app.post('/api/backup', requireAuth, (req, res) => {
-    // Lưu ý: Đảm bảo bạn đã Mount thẻ nhớ vào /media/sdcard ở chế độ ro (Read-only) trong fstab
+    // Đã sửa lại cú pháp exclude tường minh để tương thích với Node.js sh
     const backupCommand = `
         sudo mount -o remount,rw /media/sdcard && \
-        sudo rsync -aAX --delete --exclude={"/dev/*","/proc/*","/sys/*","/tmp/*","/run/*","/mnt/*","/media/*","/lost+found"} / /media/sdcard/ && \
+        sudo rsync -aAX --delete --exclude=/dev/* --exclude=/proc/* --exclude=/sys/* --exclude=/tmp/* --exclude=/run/* --exclude=/mnt/* --exclude=/media/* --exclude=/lost+found / /media/sdcard/ && \
         sudo mount -o remount,ro /media/sdcard
     `;
 
