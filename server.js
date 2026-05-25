@@ -6,6 +6,26 @@ const path = require('path');
 const os = require('os');
 const fs = require('fs');
 
+function getThermalTemp(keyword) {
+    try {
+        const thermalDir = '/sys/class/thermal/';
+        if (!fs.existsSync(thermalDir)) return "N/A";
+        
+        const zones = fs.readdirSync(thermalDir).filter(f => f.startsWith('thermal_zone'));
+        for (const zone of zones) {
+            const typePath = `${thermalDir}${zone}/type`;
+            if (fs.existsSync(typePath)) {
+                const type = fs.readFileSync(typePath, 'utf8').trim().toLowerCase();
+                if (type.includes(keyword)) {
+                    const temp = fs.readFileSync(`${thermalDir}${zone}/temp`, 'utf8');
+                    return (parseInt(temp, 10) / 1000).toFixed(1);
+                }
+            }
+        }
+    } catch (e) {}
+    return "N/A";
+}
+
 dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -92,11 +112,12 @@ app.get('/api/system', requireAuth, (req, res) => {
                     
                     return res.json({
                         cpu: cpuUsage.toFixed(1),
-                        temp: cpuTemp
+                        temp: getThermalTemp('cpu')
                         memory: {
                             used: (usedMem / 1024 / 1024 / 1024).toFixed(2),
                             total: (totalMem / 1024 / 1024 / 1024).toFixed(2),
                             percent: ((usedMem / totalMem) * 100).toFixed(1)
+                            temp: getThermalTemp('ddr')
                         },
                         disk: diskInfo,
                         usb: usbList
@@ -116,10 +137,11 @@ app.get('/api/system', requireAuth, (req, res) => {
                         
                         return res.json({
                             cpu: cpuUsage.toFixed(1),
-                            temp: cpuTemp
+                            temp: getThermalTemp('cpu')
                             memory: { used: (usedMem / 1024 / 1024 / 1024).toFixed(2), total: (totalMem / 1024 / 1024 / 1024).toFixed(2), percent: ((usedMem / totalMem) * 100).toFixed(1) },
                             disk: diskInfo,
                             usb: usbList
+                            temp: getThermalTemp('ddr')
                         });
                     }
                     
@@ -142,8 +164,9 @@ app.get('/api/system', requireAuth, (req, res) => {
                         
                         res.json({
                             cpu: cpuUsage.toFixed(1),
-                            temp: cpuTemp
+                            temp: getThermalTemp('cpu')
                             memory: { used: (usedMem / 1024 / 1024 / 1024).toFixed(2), total: (totalMem / 1024 / 1024 / 1024).toFixed(2), percent: ((usedMem / totalMem) * 100).toFixed(1) },
+                            temp: getThermalTemp('ddr')
                             disk: diskInfo,
                             usb: usbList
                         });
