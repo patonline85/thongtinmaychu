@@ -378,22 +378,17 @@
             try {
                 const res = await fetch('/api/unmount', { method: 'POST' });
                 const data = await res.json();
-        
+                
                 if (data.success) {
-                    btnElement.innerHTML = `<i class="fa-solid fa-check text-green-600"></i>`;
-                    // Sau khi unmount thành công, force gọi lại fetchSystem ngay lập tức 
-                    // để giao diện đẩy thẻ nhớ này xuống trạng thái "Chưa Mount" (Lớp 2)
-                    setTimeout(() => fetchSystem(), 1500); 
+                    // Sau khi gỡ thành công, gọi fetchSystem để UI cập nhật mất luôn chữ "Đã gắn USB"
+                    await fetchSystem();
                 } else {
                     alert(data.error);
-                    resetBtn();
+                    btnElement.disabled = false;
+                    btnElement.innerHTML = originalHTML;
                 }
             } catch (e) {
                 alert("Lỗi kết nối đến máy chủ.");
-                resetBtn();
-            }
-        
-            function resetBtn() {
                 btnElement.disabled = false;
                 btnElement.innerHTML = originalHTML;
             }
