@@ -76,15 +76,14 @@
             </a>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 mb-8">
-            <div class="bg-white p-6 rounded-3xl shadow-paper flex flex-col justify-between transition-all duration-300 hover:-translate-y-1">
+        <div class="bg-white p-6 rounded-3xl shadow-paper flex flex-col justify-between transition-all duration-300 hover:-translate-y-1">
                 <h3 class="text-ink/70 font-semibold mb-4 text-sm md:text-base uppercase tracking-wider">
                     <i class="fa-solid fa-microchip text-clay mr-2"></i>CPU Máy Chủ
                 </h3>
                 <div class="flex items-end justify-between">
                     <span id="sys-cpu" class="text-4xl md:text-5xl font-bold text-clay font-mono">0%</span>
-                    <div id="sys-cpu-temp" class="text-sm text-ink/60 font-mono pb-1">
-                        <i class="fa-solid fa-temperature-half mr-1"></i>--°C
+                    <div id="sys-cpu-temp" class="text-sm font-bold text-clay font-mono pb-1">
+                        <i class="fa-solid fa-temperature-half mr-1 opacity-70"></i>--°C
                     </div>
                 </div>
             </div>
@@ -95,7 +94,12 @@
                 </h3>
                 <div class="flex items-end justify-between">
                     <span id="sys-ram-pct" class="text-4xl md:text-5xl font-bold text-clay font-mono">0%</span>
-                    <div id="sys-ram-detail" class="text-sm text-ink/60 font-mono pb-1">0 / 0 GB</div>
+                    <div class="text-right">
+                        <div id="sys-ram-temp" class="text-sm font-bold text-clay font-mono mb-1">
+                            <i class="fa-solid fa-temperature-half mr-1 opacity-70"></i>--°C
+                        </div>
+                        <div id="sys-ram-detail" class="text-xs text-ink/60 font-mono">0 / 0 GB</div>
+                    </div>
                 </div>
             </div>
             
@@ -223,8 +227,10 @@
                 
                 // Cập nhật giao diện CPU & RAM
                 document.getElementById('sys-cpu').textContent = data.cpu.usage + '%';
-                document.getElementById('sys-cpu-temp').innerHTML = `<i class="fa-solid fa-temperature-half text-clay/70 mr-1"></i>${data.cpu.temp}°C`;
+                document.getElementById('sys-cpu-temp').innerHTML = `<i class="fa-solid fa-temperature-half mr-1 opacity-70"></i>${data.cpu.temp}°C`;
+                
                 document.getElementById('sys-ram-pct').textContent = data.memory.percent + '%';
+                document.getElementById('sys-ram-temp').innerHTML = `<i class="fa-solid fa-temperature-half mr-1 opacity-70"></i>${data.memory.temp}°C`;
                 document.getElementById('sys-ram-detail').textContent = `${data.memory.used} GB / ${data.memory.total} GB`;
                 
                 // Cập nhật giao diện Ổ Cứng
