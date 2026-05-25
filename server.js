@@ -62,9 +62,9 @@ app.get('/api/system', requireAuth, (req, res) => {
 });
 
 // API Lấy thông số Docker (Thay thế ctop)
-// API Lấy thông số Docker (Thay thế ctop)
 app.get('/api/docker', requireAuth, (req, res) => {
-    exec('docker stats --no-stream --format "{{.Name}}|{{.CPUPerc}}|{{.MemUsage}}|{{.MemPerc}}|{{.Status}}" ', (err, stdout, stderr) => {
+    // ĐÃ XÓA {{.Status}} ĐỂ FIX LỖI TEMPLATE PARSING
+    exec('docker stats --no-stream --format "{{.Name}}|{{.CPUPerc}}|{{.MemUsage}}|{{.MemPerc}}" ', (err, stdout, stderr) => {
         if (err || stderr) {
             console.error("⛔ Lỗi lấy dữ liệu Docker:", err?.message || stderr);
             return res.status(500).json({ error: "Không thể lấy dữ liệu Docker", details: err?.message || stderr });
@@ -72,8 +72,8 @@ app.get('/api/docker', requireAuth, (req, res) => {
         
         try {
             const containers = stdout.trim().split('\n').filter(line => line).map(line => {
-                const [name, cpu, mem, memPerc, status] = line.split('|');
-                return { name, cpu, mem, memPerc, status };
+                const [name, cpu, mem, memPerc] = line.split('|');
+                return { name, cpu, mem, memPerc };
             });
             res.json({ containers });
         } catch (parseError) {
