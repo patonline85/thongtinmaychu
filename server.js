@@ -102,6 +102,7 @@ app.get('/api/system', requireAuth, (req, res) => {
                     });
                     
                     return res.json({
+                        isBackingUp: isBackingUp,
                         cpu: {
                             usage: cpuUsage.toFixed(1),
                             temp: getThermalTemp('cpu')
@@ -129,6 +130,7 @@ app.get('/api/system', requireAuth, (req, res) => {
                         });
                         
                         return res.json({
+                            isBackingUp: isBackingUp,
                             cpu: {
                                 usage: cpuUsage.toFixed(1),
                                 temp: getThermalTemp('cpu')
@@ -161,6 +163,7 @@ app.get('/api/system', requireAuth, (req, res) => {
                         }
                         
                         res.json({
+                            isBackingUp: isBackingUp,
                             cpu: {
                                 usage: cpuUsage.toFixed(1),
                                 temp: getThermalTemp('cpu')
