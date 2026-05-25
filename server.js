@@ -1,5 +1,5 @@
 const express = require('express');
-const { exec } = require('child_process');
+const { exec, spawn } = require('child_process');
 const session = require('express-session');
 const dotenv = require('dotenv');
 const path = require('path');
@@ -227,9 +227,6 @@ app.get('/api/docker', requireAuth, (req, res) => {
         }
     });
 });
-
-// Cần import thêm spawn từ child_process (có thể đặt ở đầu file hoặc gọi trực tiếp)
-const { exec, spawn } = require('child_process');
 
 // API Kích hoạt Backup (Đồng bộ Rsync sang thiết bị ngoài - Chống tràn RAM)
 app.post('/api/backup', requireAuth, (req, res) => {
