@@ -105,15 +105,19 @@
                 const res = await fetch('/api/docker');
                 const data = await res.json();
                 const tbody = document.getElementById('docker-list');
-                tbody.innerHTML = '';
                 
+                if (data.error) {
+                    tbody.innerHTML = `<tr><td colspan="4" class="p-4 text-red-400 font-bold text-center">Lỗi: ${data.details || data.error}</td></tr>`;
+                    return;
+                }
+
+                tbody.innerHTML = '';
                 data.containers.forEach(c => {
                     const cpuNum = parseFloat(c.cpu);
-                    // Đổi màu nếu CPU cao quá 50%
                     const cpuColor = cpuNum > 50 ? 'text-red-400 font-bold' : (cpuNum > 10 ? 'text-yellow-400' : 'text-gray-300');
                     
                     tbody.innerHTML += `
-                        <tr class="hover:bg-gray-700/50 transition">
+                        <tr class="hover:bg-gray-700/50 transition border-b border-gray-700">
                             <td class="p-4 text-blue-300 font-bold">${c.name}</td>
                             <td class="p-4 ${cpuColor}">${c.cpu}</td>
                             <td class="p-4 text-gray-300">${c.mem}</td>
@@ -121,7 +125,9 @@
                         </tr>
                     `;
                 });
-            } catch (e) {}
+            } catch (e) {
+                console.error("Lỗi fetch:", e);
+            }
         }
 
         function startMonitoring() {
