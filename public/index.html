@@ -251,9 +251,14 @@
                                 <span class="leading-relaxed text-sm">${item}</span>
                             </div>
                             ${item.includes('Thẻ nhớ') ? `
-                                <button onclick="triggerBackup(this)" class="ml-3 shrink-0 bg-white border border-clay text-clay hover:bg-clay hover:text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow-sm hover:shadow-md transition-all active:scale-95 flex items-center gap-1">
-                                    <i class="fa-solid fa-rotate"></i> <span>Đồng bộ</span>
-                                </button>
+                                <div class="flex items-center gap-2 ml-3 shrink-0">
+                                    <button onclick="triggerBackup(this)" class="bg-white border border-clay text-clay hover:bg-clay hover:text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow-sm hover:shadow-md transition-all active:scale-95 flex items-center gap-1">
+                                        <i class="fa-solid fa-rotate"></i> <span>Đồng bộ</span>
+                                    </button>
+                                    <button onclick="triggerUnmount(this)" class="bg-paper border border-ink/30 text-ink/70 hover:bg-ink hover:text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow-sm hover:shadow-md transition-all active:scale-95 flex items-center gap-1" title="Ngắt kết nối an toàn">
+                                        <i class="fa-solid fa-eject"></i>
+                                    </button>
+                                </div>
                             ` : ''}
                         </li>`;
                 });
@@ -354,6 +359,35 @@
                 btnElement.disabled = false;
                 btnElement.innerHTML = originalHTML;
                 btnElement.className = "ml-3 shrink-0 bg-white border border-clay text-clay hover:bg-clay hover:text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow-sm hover:shadow-md transition-all active:scale-95 flex items-center gap-1";
+            }
+        }
+
+        async function triggerUnmount(btnElement) {
+            const originalHTML = btnElement.innerHTML;
+            btnElement.disabled = true;
+            btnElement.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i>`;
+            
+            try {
+                const res = await fetch('/api/unmount', { method: 'POST' });
+                const data = await res.json();
+        
+                if (data.success) {
+                    btnElement.innerHTML = `<i class="fa-solid fa-check text-green-600"></i>`;
+                    // Sau khi unmount thành công, force gọi lại fetchSystem ngay lập tức 
+                    // để giao diện đẩy thẻ nhớ này xuống trạng thái "Chưa Mount" (Lớp 2)
+                    setTimeout(() => fetchSystem(), 1500); 
+                } else {
+                    alert(data.error);
+                    resetBtn();
+                }
+            } catch (e) {
+                alert("Lỗi kết nối đến máy chủ.");
+                resetBtn();
+            }
+        
+            function resetBtn() {
+                btnElement.disabled = false;
+                btnElement.innerHTML = originalHTML;
             }
         }
     </script>
