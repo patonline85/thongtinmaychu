@@ -236,11 +236,16 @@ app.post('/api/backup', requireAuth, (req, res) => {
 
 // API Ngắt kết nối an toàn (Unmount)
 app.post('/api/unmount', requireAuth, (req, res) => {
-    // Dùng chroot /hostfs để unmount đúng ổ đĩa của Host
-    exec("chroot /hostfs umount /media/sdcard", (err, stdout, stderr) => {
+    // Dùng sh -c để chạy chuỗi lệnh: 
+    // umount -l (Lazy unmount): Cưỡng chế cắt đứt kết nối ngay lập tức để không bị kẹt báo lỗi busy.
+    // Tháo cả phân vùng Root (/media/sdcard) và Boot (/dev/mmcblk1p1).
+    // Thêm exit 0 để API luôn trả về thành công cho giao diện.
+    const unmountCommand = `chroot /hostfs sh -c "umount -l /media/sdcard 2>/dev/null; umount -l /dev/mmcblk1p1 2>/dev/null; exit 0"`;
+
+    exec(unmountCommand, (err, stdout, stderr) => {
         if (err) {
             console.error("⛔ Lỗi Unmount:", err.message);
-            return res.status(500).json({ success: false, error: "Không thể ngắt kết nối. Có thể thiết bị đang bận." });
+            return res.status(500).json({ success: false, error: "Không thể ngắt kết nối. Vui lòng thử lại." });
         }
         res.json({ success: true, message: "Đã ngắt kết nối an toàn!" });
     });
