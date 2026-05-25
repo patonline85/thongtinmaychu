@@ -230,25 +230,23 @@ app.get('/api/docker', requireAuth, (req, res) => {
 
 // API Kích hoạt Backup (Đồng bộ Rsync sang thiết bị ngoài)
 app.post('/api/backup', requireAuth, (req, res) => {
-    if (isBackingUp) {
-        return res.status(400).json({ success: false, error: "Hệ thống đang đồng bộ ngầm rồi!" });
-    }
-    
+    if (isBackingUp) return res.status(400).json({ success: false, error: "Hệ thống đang đồng bộ!" });
     isBackingUp = true;
-    isUnmountedByUser = false; // Nếu user bấm ép đồng bộ bằng tay, ta hủy lệnh chặn mount đi
     res.json({ success: true, message: "Đã kích hoạt đồng bộ ngầm!" });
 
+    // Đã thêm lệnh ném log vào /dev/null và lệnh ÉP XẢ RAM (drop_caches) ở dòng cuối
     const backupCommand = `
         TARGET_DEV=$(chroot /hostfs sh -c "df | grep /media/sdcard | awk '{print \\$1}'") && \
         if [ ! -z "$TARGET_DEV" ]; then chroot /hostfs mount -o remount,rw $TARGET_DEV; fi && \
-        chroot /hostfs rsync -aAXxHS --delete --exclude='/dev/*' --exclude='/proc/*' --exclude='/sys/*' --exclude='/tmp/*' --exclude='/run/*' --exclude='/mnt/*' --exclude='/media/*' --exclude='/lost+found' / /media/sdcard/ && \
-        if [ ! -z "$TARGET_DEV" ]; then chroot /hostfs mount -o remount,ro $TARGET_DEV; fi
+        chroot /hostfs rsync -aAXxHS --delete --exclude='/dev/*' --exclude='/proc/*' --exclude='/sys/*' --exclude='/tmp/*' --exclude='/run/*' --exclude='/mnt/*' --exclude='/media/*' --exclude='/lost+found' / /media/sdcard/ > /dev/null 2>&1 && \
+        if [ ! -z "$TARGET_DEV" ]; then chroot /hostfs mount -o remount,ro $TARGET_DEV; fi && \
+        chroot /hostfs sh -c "sync; echo 1 > /proc/sys/vm/drop_caches"
     `;
 
-    exec(backupCommand, (err, stdout, stderr) => {
+    exec(backupCommand, (err) => {
         isBackingUp = false;
-        if (err) console.error("⛔ Lỗi Backup ngầm:", err.message);
-        else console.log("✅ Đã hoàn tất đồng bộ ngầm!");
+        if (err) console.error("Lỗi Backup:", err.message);
+        else console.log("✅ Backup hoàn tất. Đã ép hệ thống xả 100% RAM đệm!");
     });
 });
 
