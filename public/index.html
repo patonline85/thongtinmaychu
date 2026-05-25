@@ -149,103 +149,106 @@
     <script>
         let intervalId = null;
 
+        // ==========================================
+        // 1. XỬ LÝ SỰ KIỆN PHÍM ENTER CHO ĐĂNG NHẬP
+        // ==========================================
+        document.getElementById('password').addEventListener('keypress', function(event) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                login();
+            }
+        });
+        
+        document.getElementById('username').addEventListener('keypress', function(event) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                document.getElementById('password').focus();
+            }
+        });
+        
+        // ==========================================
+        // 2. CÁC HÀM GỌI API (Đã bỏ mock data test UI)
+        // ==========================================
         async function login() {
             const user = document.getElementById('username').value;
             const pass = document.getElementById('password').value;
             const err = document.getElementById('login-error');
             
-            // Mock API Logic thay thế (vì giao diện tĩnh)
-            // Trong thực tế, bạn giữ nguyên fetch URL của mình
-            const res = await fetch('/api/login', {
-                method: 'POST', headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ username: user, password: pass })
-            }).catch(() => ({ json: () => ({success: true}) })); // Fallback for UI testing
-            
-            const data = await res.json();
-            
-            if (data.success || true) { // Forced true for UI presentation
-                document.getElementById('login-screen').classList.add('opacity-0', 'pointer-events-none');
-                setTimeout(() => {
-                    document.getElementById('login-screen').classList.add('hidden');
-                    document.getElementById('dashboard-screen').classList.remove('hidden');
-                    document.getElementById('dashboard-screen').classList.add('animate-fade-in');
-                }, 300);
-                err.classList.add('hidden');
-                startMonitoring();
-            } else {
-                err.textContent = data.error || "Tài khoản hoặc mật khẩu không chính xác.";
+            try {
+                const res = await fetch('/api/login', {
+                    method: 'POST', 
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ username: user, password: pass })
+                });
+                
+                const data = await res.json();
+                
+                if (data.success) {
+                    // Hiệu ứng chuyển màn hình mượt mà
+                    document.getElementById('login-screen').classList.add('opacity-0', 'pointer-events-none');
+                    setTimeout(() => {
+                        document.getElementById('login-screen').classList.add('hidden');
+                        document.getElementById('dashboard-screen').classList.remove('hidden');
+                        document.getElementById('dashboard-screen').classList.add('animate-fade-in');
+                    }, 300);
+                    
+                    err.classList.add('hidden');
+                    startMonitoring();
+                } else {
+                    err.textContent = data.error || "Tài khoản hoặc mật khẩu không chính xác.";
+                    err.classList.remove('hidden');
+                }
+            } catch (e) {
+                err.textContent = "Không thể kết nối đến máy chủ.";
                 err.classList.remove('hidden');
             }
         }
-
-        // Lắng nghe sự kiện gõ phím trên ô mật khẩu
-        document.getElementById('password').addEventListener('keypress', function(event) {
-            // Nếu phím được nhấn là Enter
-            if (event.key === 'Enter') {
-                event.preventDefault(); // Ngăn chặn hành vi mặc định (nếu có)
-                login(); // Gọi hàm đăng nhập
-            }
-        });
         
-        // Bạn cũng có thể thêm cho cả ô username để UX mượt mà hơn
-        document.getElementById('username').addEventListener('keypress', function(event) {
-            if (event.key === 'Enter') {
-                event.preventDefault();
-                document.getElementById('password').focus(); // Chuyển con trỏ xuống ô mật khẩu
-            }
-        });
-
         async function fetchSystem() {
             try {
-                const res = await fetch('/api/system').catch(() => ({
-                    status: 200,
-                    json: () => ({
-                        cpu: '12.4',
-                        memory: { percent: '45', used: '3.6', total: '8.0' },
-                        disk: { percent: '68%', used: '15G', free: '7G', total: '22G' },
-                        usb: ['USB SanDisk 3.2 Gen 1', 'Không có thiết bị khác']
-                    })
-                }));
-                if(res.status === 401) return location.reload();
+                const res = await fetch('/api/system');
+                
+                // Nếu server trả về 401 (Hết hạn session), tự động load lại trang để văng ra màn hình đăng nhập
+                if(res.status === 401) {
+                    clearInterval(intervalId);
+                    return location.reload();
+                }
+                
                 const data = await res.json();
                 
-                // Cập nhật CPU & RAM
+                // Cập nhật giao diện CPU & RAM
                 document.getElementById('sys-cpu').textContent = data.cpu + '%';
                 document.getElementById('sys-ram-pct').textContent = data.memory.percent + '%';
                 document.getElementById('sys-ram-detail').textContent = `${data.memory.used} GB / ${data.memory.total} GB`;
                 
-                // Cập nhật Ổ Cứng
+                // Cập nhật giao diện Ổ Cứng
                 document.getElementById('sys-disk-pct').textContent = data.disk.percent;
                 document.getElementById('sys-disk-detail').innerHTML = `Đã dùng: ${data.disk.used}<br>Còn trống: ${data.disk.free}<br>Tổng: ${data.disk.total}`;
                 
-                // Cập nhật USB
+                // Cập nhật giao diện USB
                 const usbList = document.getElementById('usb-list');
                 usbList.innerHTML = '';
                 data.usb.forEach(item => {
-                    // Cập nhật màu sắc theo Design System
-                    const iconColor = item.includes('Không có') ? 'text-ink/30' : 'text-clay';
-                    const textColor = item.includes('Không có') ? 'text-ink/50' : 'text-ink';
+                    const isNoDevice = item.includes('Không có');
+                    const iconColor = isNoDevice ? 'text-ink/30' : 'text-clay';
+                    const textColor = isNoDevice ? 'text-ink/50' : 'text-ink';
                     usbList.innerHTML += `
                         <li class="pt-3 pb-2 flex items-start leading-relaxed ${textColor} transition-all duration-300 hover:pl-2">
                             <i class="fa-brands fa-usb ${iconColor} mr-3 mt-0.5 text-lg"></i>
                             <span class="flex-1">${item}</span>
                         </li>`;
                 });
-
-            } catch (e) {}
+        
+            } catch (e) {
+                console.error("Lỗi lấy dữ liệu hệ thống:", e);
+            }
         }
-
+        
         async function fetchDocker() {
             try {
-                const res = await fetch('/api/docker').catch(() => ({
-                    json: () => ({
-                        containers: [
-                            { name: 'nginx-proxy', cpu: '0.5%', mem: '15.2MiB', memPerc: '0.2%' },
-                            { name: 'redis-cache', cpu: '2.1%', mem: '45.0MiB', memPerc: '0.6%' },
-                            { name: 'app-backend', cpu: '55.4%', mem: '256.0MiB', memPerc: '3.2%' },
-                        ]
-                    })
-                }));
+                const res = await fetch('/api/docker');
+                if(res.status === 401) return; // Bỏ qua nếu chưa auth, fetchSystem sẽ lo việc reload
+                
                 const data = await res.json();
                 const tbody = document.getElementById('docker-list');
                 
@@ -253,11 +256,10 @@
                     tbody.innerHTML = `<tr><td colspan="4" class="p-4 text-clay font-bold text-center">Lỗi: ${data.details || data.error}</td></tr>`;
                     return;
                 }
-
+        
                 tbody.innerHTML = '';
                 data.containers.forEach(c => {
                     const cpuNum = parseFloat(c.cpu);
-                    // Bảng màu terminal: đỏ nhạt cho cảnh báo, mặc định là màu text-gray-300
                     const cpuColor = cpuNum > 50 ? 'text-[#F87171] font-bold' : (cpuNum > 10 ? 'text-[#FBBF24]' : 'text-gray-300');
                     
                     tbody.innerHTML += `
@@ -269,9 +271,11 @@
                         </tr>
                     `;
                 });
-            } catch (e) {}
+            } catch (e) {
+                console.error("Lỗi lấy dữ liệu Docker:", e);
+            }
         }
-
+        
         function startMonitoring() {
             fetchSystem();
             fetchDocker();
@@ -280,9 +284,25 @@
                 fetchDocker();
             }, 3000); 
         }
-
-        // Bỏ qua check auth tự động cho file demo
-        // Thực tế code của bạn sẽ check /api/system ở đây
+        
+        // ==========================================
+        // 3. KIỂM TRA SESSION KHI VỪA VÀO TRANG
+        // ==========================================
+        document.addEventListener("DOMContentLoaded", () => {
+            // Thử gọi một API yêu cầu auth. 
+            // Nếu trình duyệt có Cookie hợp lệ (còn hạn 24h), server sẽ trả về 200.
+            fetch('/api/system')
+                .then(res => {
+                    if(res.status === 200) {
+                        // Đã đăng nhập hợp lệ -> Ẩn màn đăng nhập, hiện Dashboard và chạy quét dữ liệu
+                        document.getElementById('login-screen').classList.add('hidden');
+                        document.getElementById('dashboard-screen').classList.remove('hidden');
+                        startMonitoring();
+                    }
+                    // Nếu trả về 401, màn hình login mặc định vẫn sẽ hiện ra chờ người dùng thao tác.
+                })
+                .catch(() => {}); // Im lặng nếu có lỗi mạng ban đầu
+        });
     </script>
 </body>
 </html>
