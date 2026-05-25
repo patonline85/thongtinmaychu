@@ -62,16 +62,24 @@ app.get('/api/system', requireAuth, (req, res) => {
 });
 
 // API Lấy thông số Docker (Thay thế ctop)
+// API Lấy thông số Docker (Thay thế ctop)
 app.get('/api/docker', requireAuth, (req, res) => {
-    // Chạy lệnh docker stats 1 lần (no-stream) và format đầu ra
-    exec('docker stats --no-stream --format "{{.Name}}|{{.CPUPerc}}|{{.MemUsage}}|{{.MemPerc}}|{{.Status}}" ', (err, stdout) => {
-        if (err) return res.status(500).json({ error: "Không thể lấy dữ liệu Docker" });
+    exec('docker stats --no-stream --format "{{.Name}}|{{.CPUPerc}}|{{.MemUsage}}|{{.MemPerc}}|{{.Status}}" ', (err, stdout, stderr) => {
+        if (err || stderr) {
+            console.error("⛔ Lỗi lấy dữ liệu Docker:", err?.message || stderr);
+            return res.status(500).json({ error: "Không thể lấy dữ liệu Docker", details: err?.message || stderr });
+        }
         
-        const containers = stdout.trim().split('\n').filter(line => line).map(line => {
-            const [name, cpu, mem, memPerc, status] = line.split('|');
-            return { name, cpu, mem, memPerc, status };
-        });
-        res.json({ containers });
+        try {
+            const containers = stdout.trim().split('\n').filter(line => line).map(line => {
+                const [name, cpu, mem, memPerc, status] = line.split('|');
+                return { name, cpu, mem, memPerc, status };
+            });
+            res.json({ containers });
+        } catch (parseError) {
+            console.error("⛔ Lỗi phân tích dữ liệu:", parseError);
+            res.json({ containers: [] });
+        }
     });
 });
 
