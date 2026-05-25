@@ -19,48 +19,66 @@
         </div>
     </div>
 
-    <div id="dashboard-screen" class="hidden max-w-6xl mx-auto p-6">
+    <div id="dashboard-screen" class="hidden max-w-7xl mx-auto p-4 md:p-6">
         <div class="flex justify-between items-center mb-8">
-            <h1 class="text-3xl font-bold"><i class="fa-solid fa-gauge-high text-blue-500 mr-2"></i>Armbian Monitor</h1>
+            <h1 class="text-2xl md:text-3xl font-bold"><i class="fa-solid fa-gauge-high text-blue-500 mr-2"></i>Armbian Monitor</h1>
             <a href="/api/logout" class="bg-red-600 hover:bg-red-500 px-4 py-2 rounded-lg text-sm font-bold transition">Đăng xuất</a>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-            <div class="bg-gray-800 p-6 rounded-2xl border border-gray-700 shadow-lg">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 mb-8">
+            <div class="bg-gray-800 p-6 rounded-2xl border border-gray-700 shadow-lg flex flex-col justify-between">
                 <h3 class="text-gray-400 font-semibold mb-2"><i class="fa-solid fa-microchip mr-2"></i>CPU Máy Chủ</h3>
-                <div class="flex items-end gap-2">
-                    <span id="sys-cpu" class="text-4xl font-bold text-blue-400">0%</span>
-                </div>
+                <span id="sys-cpu" class="text-4xl font-bold text-blue-400">0%</span>
             </div>
-            <div class="bg-gray-800 p-6 rounded-2xl border border-gray-700 shadow-lg">
+            <div class="bg-gray-800 p-6 rounded-2xl border border-gray-700 shadow-lg flex flex-col justify-between">
                 <h3 class="text-gray-400 font-semibold mb-2"><i class="fa-solid fa-memory mr-2"></i>RAM Máy Chủ</h3>
                 <div class="flex items-end justify-between">
-                    <div>
-                        <span id="sys-ram-pct" class="text-4xl font-bold text-green-400">0%</span>
-                    </div>
+                    <span id="sys-ram-pct" class="text-4xl font-bold text-green-400">0%</span>
                     <div id="sys-ram-detail" class="text-sm text-gray-400 font-mono">0 / 0 GB</div>
+                </div>
+            </div>
+            <div class="bg-gray-800 p-6 rounded-2xl border border-gray-700 shadow-lg flex flex-col justify-between">
+                <h3 class="text-gray-400 font-semibold mb-2"><i class="fa-solid fa-hard-drive mr-2"></i>Ổ Cứng (Root)</h3>
+                <div class="flex items-end justify-between">
+                    <span id="sys-disk-pct" class="text-4xl font-bold text-purple-400">0%</span>
+                    <div id="sys-disk-detail" class="text-sm text-gray-400 font-mono text-right">Đã dùng: 0G<br>Tổng: 0G</div>
                 </div>
             </div>
         </div>
 
-        <div class="bg-gray-800 rounded-2xl border border-gray-700 shadow-lg overflow-hidden">
-            <div class="p-5 border-b border-gray-700 bg-gray-800/50">
-                <h3 class="text-lg font-bold"><i class="fa-brands fa-docker text-blue-500 mr-2"></i>Tiến trình Docker (Cập nhật 3s/lần)</h3>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
+            
+            <div class="bg-gray-800 rounded-2xl border border-gray-700 shadow-lg overflow-hidden h-fit">
+                <div class="p-4 border-b border-gray-700 bg-gray-800/50">
+                    <h3 class="text-lg font-bold"><i class="fa-brands fa-usb text-white mr-2"></i>Thiết bị USB</h3>
+                </div>
+                <div class="p-4">
+                    <ul id="usb-list" class="text-xs text-gray-300 font-mono space-y-3 divide-y divide-gray-700/50">
+                        <li class="pt-2 text-center text-gray-500">Đang tải...</li>
+                    </ul>
+                </div>
             </div>
-            <div class="overflow-x-auto">
-                <table class="w-full text-left">
-                    <thead class="bg-gray-900/50 text-gray-400 text-sm">
-                        <tr>
-                            <th class="p-4 font-semibold">Tên Container</th>
-                            <th class="p-4 font-semibold">CPU %</th>
-                            <th class="p-4 font-semibold">RAM Sử Dụng</th>
-                            <th class="p-4 font-semibold">RAM %</th>
-                        </tr>
-                    </thead>
-                    <tbody id="docker-list" class="divide-y divide-gray-700 text-sm font-mono">
-                        </tbody>
-                </table>
+
+            <div class="bg-gray-800 rounded-2xl border border-gray-700 shadow-lg overflow-hidden md:col-span-2">
+                <div class="p-4 border-b border-gray-700 bg-gray-800/50">
+                    <h3 class="text-lg font-bold"><i class="fa-brands fa-docker text-blue-500 mr-2"></i>Tiến trình Docker (Cập nhật 3s)</h3>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left">
+                        <thead class="bg-gray-900/50 text-gray-400 text-sm">
+                            <tr>
+                                <th class="p-4 font-semibold whitespace-nowrap">Tên Container</th>
+                                <th class="p-4 font-semibold whitespace-nowrap">CPU %</th>
+                                <th class="p-4 font-semibold whitespace-nowrap">RAM Sử Dụng</th>
+                                <th class="p-4 font-semibold whitespace-nowrap">RAM %</th>
+                            </tr>
+                        </thead>
+                        <tbody id="docker-list" class="divide-y divide-gray-700 text-sm font-mono">
+                            </tbody>
+                    </table>
+                </div>
             </div>
+
         </div>
     </div>
 
@@ -94,9 +112,25 @@
                 const res = await fetch('/api/system');
                 if(res.status === 401) return location.reload();
                 const data = await res.json();
+                
+                // Cập nhật CPU & RAM
                 document.getElementById('sys-cpu').textContent = data.cpu + '%';
                 document.getElementById('sys-ram-pct').textContent = data.memory.percent + '%';
                 document.getElementById('sys-ram-detail').textContent = `${data.memory.used} GB / ${data.memory.total} GB`;
+                
+                // Cập nhật Ổ Cứng
+                document.getElementById('sys-disk-pct').textContent = data.disk.percent;
+                document.getElementById('sys-disk-detail').innerHTML = `Đã dùng: ${data.disk.used}<br>Tổng: ${data.disk.total}`;
+
+                // Cập nhật USB
+                const usbList = document.getElementById('usb-list');
+                usbList.innerHTML = '';
+                data.usb.forEach(item => {
+                    // Cắt bớt chữ "Bus 001 Device 001: ID..." để giao diện dễ nhìn hơn
+                    const usbName = item.includes('ID ') ? item.split('ID ')[1] : item;
+                    usbList.innerHTML += `<li class="pt-2 flex items-start"><i class="fa-solid fa-plug text-gray-500 mr-3 mt-1"></i><span>${usbName}</span></li>`;
+                });
+
             } catch (e) {}
         }
 
@@ -117,17 +151,15 @@
                     const cpuColor = cpuNum > 50 ? 'text-red-400 font-bold' : (cpuNum > 10 ? 'text-yellow-400' : 'text-gray-300');
                     
                     tbody.innerHTML += `
-                        <tr class="hover:bg-gray-700/50 transition border-b border-gray-700">
-                            <td class="p-4 text-blue-300 font-bold">${c.name}</td>
+                        <tr class="hover:bg-gray-700/50 transition">
+                            <td class="p-4 text-blue-300 font-bold whitespace-nowrap">${c.name}</td>
                             <td class="p-4 ${cpuColor}">${c.cpu}</td>
-                            <td class="p-4 text-gray-300">${c.mem}</td>
+                            <td class="p-4 text-gray-300 whitespace-nowrap">${c.mem}</td>
                             <td class="p-4 text-gray-300">${c.memPerc}</td>
                         </tr>
                     `;
                 });
-            } catch (e) {
-                console.error("Lỗi fetch:", e);
-            }
+            } catch (e) {}
         }
 
         function startMonitoring() {
@@ -136,10 +168,9 @@
             intervalId = setInterval(() => {
                 fetchSystem();
                 fetchDocker();
-            }, 3000); // 3 giây cập nhật 1 lần
+            }, 3000); 
         }
 
-        // Tự động thử kiểm tra xem đã đăng nhập chưa khi mở trang
         fetch('/api/system').then(res => {
             if(res.status === 200) {
                 document.getElementById('login-screen').classList.add('hidden');
