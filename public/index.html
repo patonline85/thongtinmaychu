@@ -345,7 +345,7 @@
         
                 // 3. Phản hồi UI
                 if (data.success) {
-                    btnElement.innerHTML = `<i class="fa-solid fa-check text-green-600"></i> <span class="text-green-600">Hoàn tất</span>`;
+                    btnElement.innerHTML = `<i class="fa-solid fa-check text-green-600"></i> <span class="text-green-600">Đang chạy ngầm</span>`;
                     setTimeout(() => resetBtn(), 3000); // Trả lại nút sau 3s
                 } else {
                     alert(data.error);
