@@ -61,38 +61,46 @@ app.get('/api/logout', (req, res) => {
     res.redirect('/');
 });
 
+// Biến toàn cục để theo dõi trạng thái hệ thống
+let isBackingUp = false;
+let isUnmountedByUser = false; // Cờ chặn vòng lặp Auto-Mount khi user chủ động gỡ ổ
+
 // API Lấy thông số hệ thống (CPU, RAM, Ổ cứng, USB)
 app.get('/api/system', requireAuth, (req, res) => {
-    // --- CHỨC NĂNG TỰ ĐỘNG DÒ VÀ MOUNT THIẾT BỊ VẠN NĂNG (Bổ sung mới) ---
-    // Quét ngầm để tự động mount thẻ nhớ/USB vào /media/sdcard (không ảnh hưởng đến phản hồi UI)
+    // --- CHỨC NĂNG TỰ ĐỘNG DÒ VÀ MOUNT THIẾT BỊ VẠN NĂNG ---
     exec(`chroot /hostfs sh -c "lsblk -ln -o NAME,MOUNTPOINT,TYPE | grep part | grep -v mmcblk2"`, (devErr, devStdout) => {
-        if (!devErr && devStdout) {
-            const lines = devStdout.trim().split('\n');
-            let targetPartition = null;
-            let isMounted = false;
+        if (devErr || !devStdout || !devStdout.trim()) {
+            // Nếu không tìm thấy bất kỳ thiết bị ngoài nào cắm vào máy -> Reset cờ gỡ ổ
+            // Để lần sau khi user cắm lại USB vào, hệ thống vẫn tự động kích hoạt Auto-Mount
+            isUnmountedByUser = false;
+            return;
+        }
 
-            // Ưu tiên tìm phân vùng số 2 (sdX2 hoặc mmcblkXp2)
-            for (let line of lines) {
-                const [name, mountpoint] = line.trim().split(/\s+/);
-                if (name.endsWith('2') || name.endsWith('p2')) {
-                    targetPartition = name;
-                    if (mountpoint === '/media/sdcard') isMounted = true;
-                    break;
-                }
-            }
-            // Nếu không có phân vùng 2, lấy phân vùng đầu tiên
-            if (!targetPartition && lines.length > 0) {
-                const [name, mountpoint] = lines[0].trim().split(/\s+/);
+        const lines = devStdout.trim().split('\n');
+        let targetPartition = null;
+        let isMounted = false;
+
+        // Ưu tiên tìm phân vùng số 2 (sdX2 hoặc mmcblkXp2)
+        for (let line of lines) {
+            const [name, mountpoint] = line.trim().split(/\s+/);
+            if (name.endsWith('2') || name.endsWith('p2')) {
                 targetPartition = name;
                 if (mountpoint === '/media/sdcard') isMounted = true;
+                break;
             }
+        }
+        // Nếu không có phân vùng 2, lấy phân vùng đầu tiên
+        if (!targetPartition && lines.length > 0) {
+            const [name, mountpoint] = lines[0].trim().split(/\s+/);
+            targetPartition = name;
+            if (mountpoint === '/media/sdcard') isMounted = true;
+        }
 
-            // Tiến hành mount nếu chưa kết nối
-            if (targetPartition && !isMounted) {
-                exec(`chroot /hostfs sh -c "mkdir -p /media/sdcard && mount /dev/${targetPartition} /media/sdcard"`, (mErr) => {
-                    if (!mErr) console.log(`✅ Tự động kết nối /dev/${targetPartition} thành công!`);
-                });
-            }
+        // CHỈ AUTO-MOUNT KHI THIẾT BỊ CHƯA ĐƯỢC USER NHẤN NÚT GỠ AN TOÀN
+        if (targetPartition && !isMounted && !isUnmountedByUser) {
+            exec(`chroot /hostfs sh -c "mkdir -p /media/sdcard && mount /dev/${targetPartition} /media/sdcard"`, (mErr) => {
+                if (!mErr) console.log(`✅ Tự động kết nối /dev/${targetPartition} thành công!`);
+            });
         }
     });
     // ---------------------------------------------------------------------
@@ -160,7 +168,13 @@ app.get('/api/system', requireAuth, (req, res) => {
                             const parts = line.trim().split(/\s+/);
                             const size = parts[1]; 
                             const model = parts.slice(2).join(' ') || "Generic USB"; 
-                            return `Đã cắm: <b>${model}</b><br>Dung lượng phần cứng: <span class="text-clay font-bold">${size}</span> <br><span class="text-ink/60 text-[11px] mt-1 block tracking-wide">* Đang tiến hành kết nối (Auto-Mount)...</span>`;
+                            
+                            // Trạng thái hiển thị chữ linh hoạt dựa trên cờ chặn Unmount công phu
+                            const statusText = isUnmountedByUser 
+                                ? `<span class="text-green-600 font-bold">✓ Đã ngắt kết nối an toàn. Có thể rút thiết bị.</span>`
+                                : `* Đang tiến hành kết nối (Auto-Mount)...`;
+
+                            return `Đã cắm: <b>${model}</b><br>Dung lượng phần cứng: <span class="text-clay font-bold">${size}</span> <br><span class="text-ink/60 text-[11px] mt-1 block tracking-wide">${statusText}</span>`;
                         });
                         
                         return res.json({
@@ -180,7 +194,7 @@ app.get('/api/system', requireAuth, (req, res) => {
                         });
                     }
                     
-                    // 3. LỚP 3: Quét THIẾT BỊ VẬT LÝ (Dùng lsusb - Cứu cánh cuối cùng)
+                    // 3. LỚP 3: Quét THIẾT BỊ VẬT LÝ (Dùng lsusb)
                     exec("lsusb", (errLs, stdoutLs) => {
                         if (stdoutLs && stdoutLs.trim()) {
                             const lines = stdoutLs.trim().split('\n');
@@ -239,9 +253,6 @@ app.get('/api/docker', requireAuth, (req, res) => {
     });
 });
 
-// Biến toàn cục để theo dõi trạng thái
-let isBackingUp = false;
-
 // API Kích hoạt Backup (Đồng bộ Rsync sang thiết bị ngoài)
 app.post('/api/backup', requireAuth, (req, res) => {
     if (isBackingUp) {
@@ -249,9 +260,9 @@ app.post('/api/backup', requireAuth, (req, res) => {
     }
     
     isBackingUp = true;
+    isUnmountedByUser = false; // Nếu user bấm ép đồng bộ bằng tay, ta hủy lệnh chặn mount đi
     res.json({ success: true, message: "Đã kích hoạt đồng bộ ngầm!" });
 
-    // Tự động tìm thiết bị đang mount và mở khóa bằng TARGET_DEV
     const backupCommand = `
         TARGET_DEV=$(chroot /hostfs sh -c "df | grep /media/sdcard | awk '{print \\$1}'") && \
         if [ ! -z "$TARGET_DEV" ]; then chroot /hostfs mount -o remount,rw $TARGET_DEV; fi && \
@@ -266,10 +277,10 @@ app.post('/api/backup', requireAuth, (req, res) => {
     });
 });
 
-// API Ngắt kết nối an toàn (Unmount vạn năng - Bản nâng cấp siêu bạo lực)
+// API Ngắt kết nối an toàn (Unmount vạn năng - Bản tối ưu cờ chặn)
 app.post('/api/unmount', requireAuth, (req, res) => {
-    // 1. sync: Ép hệ thống ghi hết dữ liệu còn kẹt trên RAM xuống USB ngay lập tức.
-    // 2. umount -fl: Kết hợp Force (ép buộc) và Lazy (ngầm) để nhả ổ đĩa ngay mà không sợ bị nghẽn.
+    isUnmountedByUser = true; // KÍCH HOẠT BIỂN CẤM: Khóa ngay lập tức lệnh Auto-Mount tự động
+
     const unmountCommand = `
         chroot /hostfs sh -c "
             sync;
@@ -284,6 +295,7 @@ app.post('/api/unmount', requireAuth, (req, res) => {
 
     exec(unmountCommand, (err, stdout, stderr) => {
         if (err) {
+            isUnmountedByUser = false; // Trả lại cờ nếu lệnh thất bại thật sự
             console.error("⛔ Lỗi Unmount:", err.message);
             return res.status(500).json({ success: false, error: "Không thể ngắt kết nối. Vui lòng thử lại." });
         }
