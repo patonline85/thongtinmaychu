@@ -40,23 +40,38 @@ app.get('/api/logout', (req, res) => {
     res.redirect('/');
 });
 
-// API Lấy thông số hệ thống (CPU, RAM máy chủ)
+// API Lấy thông số hệ thống (CPU, RAM, Ổ cứng, USB)
 app.get('/api/system', requireAuth, (req, res) => {
     const totalMem = os.totalmem();
     const freeMem = os.freemem();
     const usedMem = totalMem - freeMem;
     
-    // Chạy lệnh top 1 lần để lấy CPU
-    exec("top -bn1 | grep 'Cpu(s)' | sed 's/.*, *\\([0-9.]*\\)%* id.*/\\1/' | awk '{print 100 - $1}'", (err, stdout) => {
-        const cpuUsage = err ? 0 : parseFloat(stdout.trim());
+    // 1. Chạy lệnh lấy CPU
+    exec("top -bn1 | grep 'Cpu(s)' | sed 's/.*, *\\([0-9.]*\\)%* id.*/\\1/' | awk '{print 100 - $1}'", (errCpu, stdoutCpu) => {
+        const cpuUsage = errCpu ? 0 : parseFloat(stdoutCpu.trim());
         
-        res.json({
-            cpu: cpuUsage.toFixed(1),
-            memory: {
-                used: (usedMem / 1024 / 1024 / 1024).toFixed(2),
-                total: (totalMem / 1024 / 1024 / 1024).toFixed(2),
-                percent: ((usedMem / totalMem) * 100).toFixed(1)
-            }
+        // 2. Chạy lệnh lấy Ổ cứng (đọc từ thư mục /hostfs)
+        exec("df -h /hostfs | awk 'NR==2 {print $2 \"|\" $3 \"|\" $4 \"|\" $5}'", (errDisk, stdoutDisk) => {
+            const diskParts = (stdoutDisk || "").trim().split('|');
+            const diskInfo = diskParts.length === 4 ? {
+                total: diskParts[0], used: diskParts[1], free: diskParts[2], percent: diskParts[3]
+            } : { total: "0G", used: "0G", free: "0G", percent: "0%" };
+
+            // 3. Chạy lệnh quét cổng USB
+            exec("lsusb", (errUsb, stdoutUsb) => {
+                const usbList = stdoutUsb ? stdoutUsb.trim().split('\n').filter(l => l) : [];
+
+                res.json({
+                    cpu: cpuUsage.toFixed(1),
+                    memory: {
+                        used: (usedMem / 1024 / 1024 / 1024).toFixed(2),
+                        total: (totalMem / 1024 / 1024 / 1024).toFixed(2),
+                        percent: ((usedMem / totalMem) * 100).toFixed(1)
+                    },
+                    disk: diskInfo,
+                    usb: usbList.length > 0 ? usbList : ["Không có thiết bị USB nào kết nối"]
+                });
+            });
         });
     });
 });
