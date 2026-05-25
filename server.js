@@ -70,9 +70,7 @@ app.get('/api/system', requireAuth, (req, res) => {
     // --- CHỨC NĂNG TỰ ĐỘNG DÒ VÀ MOUNT THIẾT BỊ VẠN NĂNG ---
     exec(`chroot /hostfs sh -c "lsblk -ln -o NAME,MOUNTPOINT,TYPE | grep part | grep -v mmcblk2"`, (devErr, devStdout) => {
         if (devErr || !devStdout || !devStdout.trim()) {
-            // Nếu không tìm thấy bất kỳ thiết bị ngoài nào cắm vào máy -> Reset cờ gỡ ổ
-            // Để lần sau khi user cắm lại USB vào, hệ thống vẫn tự động kích hoạt Auto-Mount
-            isUnmountedByUser = false;
+            isUnmountedByUser = false; 
             return;
         }
 
@@ -80,7 +78,6 @@ app.get('/api/system', requireAuth, (req, res) => {
         let targetPartition = null;
         let isMounted = false;
 
-        // Ưu tiên tìm phân vùng số 2 (sdX2 hoặc mmcblkXp2)
         for (let line of lines) {
             const [name, mountpoint] = line.trim().split(/\s+/);
             if (name.endsWith('2') || name.endsWith('p2')) {
@@ -89,145 +86,123 @@ app.get('/api/system', requireAuth, (req, res) => {
                 break;
             }
         }
-        // Nếu không có phân vùng 2, lấy phân vùng đầu tiên
         if (!targetPartition && lines.length > 0) {
             const [name, mountpoint] = lines[0].trim().split(/\s+/);
             targetPartition = name;
             if (mountpoint === '/media/sdcard') isMounted = true;
         }
 
-        // CHỈ AUTO-MOUNT KHI THIẾT BỊ CHƯA ĐƯỢC USER NHẤN NÚT GỠ AN TOÀN
         if (targetPartition && !isMounted && !isUnmountedByUser) {
-            exec(`chroot /hostfs sh -c "mkdir -p /media/sdcard && mount /dev/${targetPartition} /media/sdcard"`, (mErr) => {
-                if (!mErr) console.log(`✅ Tự động kết nối /dev/${targetPartition} thành công!`);
-            });
+            exec(`chroot /hostfs sh -c "mkdir -p /media/sdcard && mount /dev/${targetPartition} /media/sdcard"`);
         }
     });
-    // ---------------------------------------------------------------------
 
+    // --- QUÉT THÔNG SỐ RAM ---
     const totalMem = os.totalmem();
     const freeMem = os.freemem();
     const usedMem = totalMem - freeMem;
     
+    // --- QUÉT CPU VÀ TOÀN BỘ Ổ ĐĨA BẰNG CHROOT ---
     exec("top -bn1 | grep 'Cpu(s)' | sed 's/.*, *\\([0-9.]*\\)%* id.*/\\1/' | awk '{print 100 - $1}'", (errCpu, stdoutCpu) => {
         const cpuUsage = errCpu ? 0 : parseFloat(stdoutCpu.trim());
         
-        exec("df -h /hostfs | awk 'NR==2 {print $2 \"|\" $3 \"|\" $4 \"|\" $5}'", (errDisk, stdoutDisk) => {
-            const diskParts = (stdoutDisk || "").trim().split('|');
-            const diskInfo = diskParts.length === 4 ? {
-                total: diskParts[0], used: diskParts[1], free: diskParts[2], percent: diskParts[3]
-            } : { total: "0G", used: "0G", free: "0G", percent: "0%" };
+        // Gộp chung quét Ổ hệ thống và Lớp 1 (Ổ USB đã mount) vào 1 lệnh duy nhất xuyên qua hostfs
+        exec("chroot /hostfs df -h", (errDisk, stdoutDisk) => {
+            let diskInfo = { total: "0G", used: "0G", free: "0G", percent: "0%" };
+            let usbList = [];
+            const uniqueDrives = new Map();
 
-            // 1. LỚP 1: Quét ổ lưu trữ ĐÃ MOUNT (Loại bỏ ổ OS mmcblk2 và lọc trùng lặp)
-            exec("df -h | awk '($1 ~ /^\\/dev\\/sd/ || $1 ~ /^\\/dev\\/mmcblk/) && $1 !~ /mmcblk2/ {print $1 \"|\" $2 \"|\" $4}'", (errUsb, stdoutUsb) => {
-                let usbList = [];
-                
-                if (stdoutUsb && stdoutUsb.trim()) {
-                    const lines = stdoutUsb.trim().split('\n');
-                    
-                    // Sử dụng Map để lọc bỏ các phân vùng bị lặp do mount ảo của Docker/Linux
-                    const uniqueDrives = new Map();
-                    lines.forEach(line => {
-                        const [name, total, free] = line.split('|');
-                        if (name && !uniqueDrives.has(name)) {
-                            uniqueDrives.set(name, { total, free });
+            if (!errDisk && stdoutDisk) {
+                const dfLines = stdoutDisk.trim().split('\n');
+                dfLines.forEach(line => {
+                    const parts = line.trim().split(/\s+/);
+                    if (parts.length >= 6) {
+                        const devName = parts[0];
+                        const total = parts[1];
+                        const used = parts[2];
+                        const free = parts[3];
+                        const percent = parts[4];
+                        const mount = parts[5];
+
+                        // Đọc ổ eMMC gốc (/)
+                        if (mount === '/') {
+                            diskInfo = { total, used, free, percent: percent.replace('%', '') };
                         }
-                    });
-                    
-                    // Tạo danh sách hiển thị UI
-                    usbList = Array.from(uniqueDrives.entries()).map(([name, data]) => {
-                        const driveName = name.replace('/dev/', '').toUpperCase();
-                        // Nếu là mmcblk thì gọi là Thẻ nhớ, nếu là sd thì gọi là USB
-                        const typeName = driveName.includes('MMCBLK') ? 'Thẻ nhớ' : 'USB';
                         
-                        return `Đã gắn ${typeName} <b>(${driveName})</b><br>Tổng: <span class="text-clay font-bold">${data.total}</span> - Trống: <span class="text-clay font-bold">${data.free}</span>`;
-                    });
+                        // LỚP 1: Quét ổ cắm ngoài đã Auto-Mount thành công
+                        if ((devName.startsWith('/dev/sd') || devName.startsWith('/dev/mmcblk')) && !devName.includes('mmcblk2')) {
+                            uniqueDrives.set(devName, { total, free });
+                        }
+                    }
+                });
+            }
+
+            if (uniqueDrives.size > 0) {
+                usbList = Array.from(uniqueDrives.entries()).map(([name, data]) => {
+                    const driveName = name.replace('/dev/', '').toUpperCase();
+                    const typeName = driveName.includes('MMCBLK') ? 'Thẻ nhớ' : 'USB';
+                    return `Đã gắn ${typeName} <b>(${driveName})</b><br>Tổng: <span class="text-clay font-bold">${data.total}</span> - Trống: <span class="text-clay font-bold">${data.free}</span>`;
+                });
+                return sendSystemResponse();
+            }
+
+            // LỚP 2: Quét ổ cắm vào nhưng chưa Mount (Ép dùng chroot lsblk để nhận diện cắm nóng)
+            exec("chroot /hostfs lsblk -d -n -o NAME,SIZE,MODEL", (errBlk, stdoutBlk) => {
+                if (!errBlk && stdoutBlk && stdoutBlk.trim()) {
+                    const blkLines = stdoutBlk.trim().split('\n');
+                    const validDrives = blkLines.filter(line => line.startsWith('sd') || line.startsWith('mmcblk1'));
                     
-                    return res.json({
-                        isBackingUp: isBackingUp,
-                        cpu: {
-                            usage: cpuUsage.toFixed(1),
-                            temp: getThermalTemp('cpu')
-                        },
-                        memory: {
-                            used: (usedMem / 1024 / 1024 / 1024).toFixed(2),
-                            total: (totalMem / 1024 / 1024 / 1024).toFixed(2),
-                            percent: ((usedMem / totalMem) * 100).toFixed(1),
-                            temp: getThermalTemp('ddr')
-                        },
-                        disk: diskInfo,
-                        usb: usbList
-                    });
-                }
-                
-                // 2. LỚP 2: Quét ổ chưa Mount nhưng có DUNG LƯỢNG (Dùng lsblk)
-                exec("lsblk -d -n -o NAME,SIZE,MODEL | grep '^sd'", (errBlk, stdoutBlk) => {
-                    if (stdoutBlk && stdoutBlk.trim()) {
-                        const lines = stdoutBlk.trim().split('\n');
-                        usbList = lines.map(line => {
+                    if (validDrives.length > 0) {
+                        usbList = validDrives.map(line => {
                             const parts = line.trim().split(/\s+/);
                             const size = parts[1]; 
-                            const model = parts.slice(2).join(' ') || "Generic USB"; 
+                            const model = parts.slice(2).join(' ') || "Thiết bị ngoại vi"; 
                             
-                            // Trạng thái hiển thị chữ linh hoạt dựa trên cờ chặn Unmount công phu
                             const statusText = isUnmountedByUser 
                                 ? `<span class="text-green-600 font-bold">✓ Đã ngắt kết nối an toàn. Có thể rút thiết bị.</span>`
                                 : `* Đang tiến hành kết nối (Auto-Mount)...`;
 
                             return `Đã cắm: <b>${model}</b><br>Dung lượng phần cứng: <span class="text-clay font-bold">${size}</span> <br><span class="text-ink/60 text-[11px] mt-1 block tracking-wide">${statusText}</span>`;
                         });
+                        return sendSystemResponse();
+                    }
+                }
+
+                // LỚP 3: Quét thiết bị vật lý (Ép dùng chroot lsusb)
+                exec("chroot /hostfs lsusb", (errLs, stdoutLs) => {
+                    if (!errLs && stdoutLs && stdoutLs.trim()) {
+                        const lsLines = stdoutLs.trim().split('\n');
+                        const filteredLines = lsLines.filter(line => !/1d6b|Linux|root hub|Host Controller/i.test(line));
                         
-                        return res.json({
-                            isBackingUp: isBackingUp,
-                            cpu: {
-                                usage: cpuUsage.toFixed(1),
-                                temp: getThermalTemp('cpu')
-                            },
-                            memory: {
-                                used: (usedMem / 1024 / 1024 / 1024).toFixed(2),
-                                total: (totalMem / 1024 / 1024 / 1024).toFixed(2),
-                                percent: ((usedMem / totalMem) * 100).toFixed(1),
-                                temp: getThermalTemp('ddr')
-                            },
-                            disk: diskInfo,
-                            usb: usbList
+                        usbList = filteredLines.map(line => {
+                            const usbName = line.includes('ID ') ? line.split('ID ')[1] : line;
+                            return `Nhận diện thiết bị: <b>${usbName}</b><br><span class="text-ink/60 text-[11px] block mt-1 leading-relaxed">* Chưa đọc được dung lượng. Nếu là đầu đọc, vui lòng kiểm tra thẻ nhớ.</span>`;
                         });
                     }
-                    
-                    // 3. LỚP 3: Quét THIẾT BỊ VẬT LÝ (Dùng lsusb)
-                    exec("lsusb", (errLs, stdoutLs) => {
-                        if (stdoutLs && stdoutLs.trim()) {
-                            const lines = stdoutLs.trim().split('\n');
-                            const filteredLines = lines.filter(line => !/1d6b|Linux|root hub|Host Controller/i.test(line));
-                            
-                            usbList = filteredLines.map(line => {
-                                const usbName = line.includes('ID ') ? line.split('ID ')[1] : line;
-                                return `Nhận diện thiết bị: <b>${usbName}</b><br><span class="text-ink/60 text-[11px] block mt-1 leading-relaxed">* Chưa đọc được dung lượng. Nếu là đầu đọc, vui lòng kiểm tra thẻ nhớ.</span>`;
-                            });
-                        }
-                        
-                        if (usbList.length === 0) {
-                            usbList = ["Không có thiết bị USB nào đang gắn"];
-                        }
-                        
-                        res.json({
-                            isBackingUp: isBackingUp,
-                            cpu: {
-                                usage: cpuUsage.toFixed(1),
-                                temp: getThermalTemp('cpu')
-                            },
-                            memory: {
-                                used: (usedMem / 1024 / 1024 / 1024).toFixed(2),
-                                total: (totalMem / 1024 / 1024 / 1024).toFixed(2),
-                                percent: ((usedMem / totalMem) * 100).toFixed(1),
-                                temp: getThermalTemp('ddr')
-                            },
-                            disk: diskInfo,
-                            usb: usbList
-                        });
-                    });
+
+                    if (usbList.length === 0) {
+                        usbList = ["Không có thiết bị USB nào đang gắn"];
+                    }
+
+                    return sendSystemResponse();
                 });
             });
+
+            // Hàm con xuất JSON gọn gàng (DRY pattern)
+            function sendSystemResponse() {
+                res.json({
+                    isBackingUp: isBackingUp,
+                    cpu: { usage: cpuUsage.toFixed(1), temp: getThermalTemp('cpu') },
+                    memory: {
+                        used: (usedMem / 1024 / 1024 / 1024).toFixed(2),
+                        total: (totalMem / 1024 / 1024 / 1024).toFixed(2),
+                        percent: ((usedMem / totalMem) * 100).toFixed(1),
+                        temp: getThermalTemp('ddr')
+                    },
+                    disk: diskInfo,
+                    usb: usbList
+                });
+            }
         });
     });
 });
